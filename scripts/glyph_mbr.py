@@ -7,12 +7,11 @@ from ocf_training import directional_fields
 
 
 @torch.no_grad()
-def gallery_similarity(images, *, batch_size=128):
-    """Approximate pairwise OCF of the labeled gallery without registration.
+def contour_signatures(images, *, batch_size=128):
+    """Return signed multi-scale contour signatures and a relative energy per glyph.
 
     At each scale, retain signed directional derivatives on a 16×16 grid and
-    local orientation covariance on a coarser grid. Convert signature agreement
-    and relative contour energy to an overlap-to-union ratio.
+    local orientation covariance on a coarser grid.
     """
     if images.ndim != 3 or images.shape[-2:] != (64, 64) or not len(images):
         raise ValueError("Expected a nonempty [glyphs, 64, 64] image gallery")
@@ -34,18 +33,32 @@ def gallery_similarity(images, *, batch_size=128):
         signatures.append(F.normalize(torch.cat(signature, dim=1)))
         energies.append(torch.stack(scale_energies).sum(dim=0))
 
-    signature = torch.cat(signatures)
-    energy = torch.cat(energies).clamp_min(1e-8)
+    return torch.cat(signatures), torch.cat(energies).clamp_min(1e-8)
+
+
+def contour_utility(left, left_energy, right, right_energy):
+    """Convert signature agreement and relative energy to approximate OCF."""
+    agreement = (left @ right.T).clamp(0, 1)
+    lower = torch.minimum(left_energy[:, None], right_energy)
+    upper = torch.maximum(left_energy[:, None], right_energy)
+    ratio = lower / upper
+    shared = agreement * ratio
+    return shared / (1 + ratio - shared)
+
+
+@torch.no_grad()
+def similarity_from_signatures(signature, energy, *, batch_size=128):
+    """Approximate pairwise OCF of the labeled gallery without registration."""
     scores = signature.new_empty((len(signature), len(signature)))
     for start in range(0, len(signature), batch_size):
         rows = slice(start, start + batch_size)
-        agreement = (signature[rows] @ signature.T).clamp(0, 1)
-        lower = torch.minimum(energy[rows, None], energy)
-        upper = torch.maximum(energy[rows, None], energy)
-        ratio = lower / upper
-        shared = agreement * ratio
-        scores[rows] = shared / (1 + ratio - shared)
+        scores[rows] = contour_utility(signature[rows], energy[rows], signature, energy)
     return scores.fill_diagonal_(1)
+
+
+def gallery_similarity(images, *, batch_size=128):
+    signatures = contour_signatures(images, batch_size=batch_size)
+    return similarity_from_signatures(*signatures, batch_size=batch_size)
 
 
 @torch.no_grad()
