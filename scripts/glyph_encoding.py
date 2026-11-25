@@ -178,6 +178,61 @@ def _mean_features(counts, n_images, n_features, device):
     return counts.to(device=device, dtype=torch.float32).mean(dim=1)
 
 
+def _rank_logits(expected, observed):
+    rate = expected.flatten(2).clamp_min(1e-6)
+    logits = observed.flatten(2) @ rate.log().transpose(1, 2) - rate.sum(-1)[:, None, :]
+    centered = logits - logits.mean(2, keepdim=True)
+    scale = centered.detach().square().mean(2, keepdim=True).sqrt().clamp_min(0.25)
+    return centered / scale
+
+
+def _rank_loss(expected, observed):
+    # Match the two evoked-response views used to rank the open font atlas.
+    start = expected.shape[-1] // 5
+    expected, observed = expected[..., start:], observed[..., start:]
+    timed = _rank_logits(expected, observed)
+    pooled = _rank_logits(expected.sum(-1), observed.sum(-1))
+    logits = timed + pooled
+    n_sessions, n_glyphs, _ = logits.shape
+    correct = torch.arange(n_glyphs, device=logits.device).repeat(n_sessions)
+    return F.cross_entropy(logits.reshape(-1, n_glyphs), correct)
+
+
+def _nearby_training_glyphs(images):
+    shape = F.normalize(F.avg_pool2d(images, 4).flatten(1), dim=1)
+    similar = shape @ shape.T
+    similar.fill_diagonal_(-torch.inf)
+    return similar.topk(min(8, len(shape) - 1), dim=1).indices
+
+
+@torch.no_grad()
+def _initialize_receptive_centers(model, images, targets):
+    """Seed spatial readouts from train-only stimulus–response associations."""
+    start = targets.shape[-1] // 5
+    rates = targets[..., start:].sum(-1)
+    centered = rates - rates.mean(1, keepdim=True)
+    population = (centered / (centered.var(1, keepdim=True, unbiased=False) + 0.05).sqrt()).mean(0)
+    ink = images[:, 0].mean((1, 2))
+    ink = F.normalize(ink - ink.mean(), dim=0)
+    features = images.flatten(1)
+    features = features - features.mean(0)
+    # Partial out total ink so global brightness does not determine every field center.
+    features = features - 0.75 * ink[:, None] * (ink @ features)[None, :]
+    population = population - 0.75 * ink[:, None] * (ink @ population)[None, :]
+    association = F.normalize(population, dim=0).T @ F.normalize(features, dim=0)
+    strength = association.reshape(model.n_units, *images.shape[1:]).square().mean(1, keepdim=True)
+    strength = F.avg_pool2d(strength, 3, stride=1, padding=1).flatten(1)
+    coords = model.spatial_grid[0, 0]
+    centers = []
+    for _ in range(model.field_centers.shape[1]):
+        position = coords[strength.argmax(1)]
+        centers.append(position)
+        distance = (coords[None] - position[:, None]).square().sum(-1)
+        strength.masked_fill_(distance < 0.30 ** 2, -torch.inf)
+    coordinates = torch.stack(centers, dim=1)
+    model.field_centers.copy_((coordinates / 0.95).clamp(-0.95, 0.95).atanh())
+
+
 def fit_glyph_encoder(
     session_counts: Mapping[str, torch.Tensor],
     images: torch.Tensor,
@@ -187,14 +242,18 @@ def fit_glyph_encoder(
     epochs: int = 32,
     batch_size: int = 64,
     seed: int = 42,
+    ranking_weight: float = 0.0,
+    receptive_init: str = "random",
 ) -> GlyphEncoder:
     """Fit response means for aligned training glyphs from one mouse.
 
     Inputs are grouped raw spike counts, as returned by ``grouped_blocks``.
     Remove all held-out glyph rows from both inputs before fitting.
     """
-    if not session_counts or min(n_time_bins, fields_per_unit, epochs, batch_size) < 1:
+    if not session_counts or min(n_time_bins, fields_per_unit, epochs, batch_size) < 1 or ranking_weight < 0:
         raise ValueError("Provide training blocks and positive encoder settings.")
+    if receptive_init not in ("random", "sta"):
+        raise ValueError("Receptive field initialization must be random or sta.")
     first = next(iter(session_counts.values()))
     if first.ndim != 3 or not first.shape[-1] or first.shape[-1] % n_time_bins:
         raise ValueError("Expected grouped responses with whole units of time-bin features.")
@@ -216,15 +275,24 @@ def fit_glyph_encoder(
 
     with torch.no_grad():
         image_features = torch.cat([model.image_features(batch) for batch in images.split(batch_size)])
-    for _ in range(epochs):
+        if receptive_init == "sta":
+            _initialize_receptive_centers(model, image_features, targets)
+        neighbors = _nearby_training_glyphs(images) if ranking_weight and len(images) > 1 else None
+    for epoch in range(epochs):
         indices = torch.randperm(len(images), generator=rng, device=device)
-        for batch in indices.split(batch_size):
+        use_ranking = neighbors is not None and epoch >= epochs // 5
+        for batch in indices.split(max(1, batch_size // 2) if use_ranking else batch_size):
+            if use_ranking:
+                draw = torch.randint(neighbors.shape[1], (len(batch),), generator=rng, device=device)
+                batch = torch.cat((batch, neighbors[batch, draw])).unique()
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast(device_type=device.type, enabled=amp):
                 drive = model.visual_drive(image_features[batch])
             logits = model._shared_and_sessions(drive.float())
             expected = F.softplus(logits).add(1e-6)
             loss = F.poisson_nll_loss(expected, targets[:, batch], log_input=False)
+            if use_ranking:
+                loss = loss + ranking_weight * _rank_loss(expected, targets[:, batch])
             loss = loss + 0.001 * (model.gains.square().mean() + model.offsets.square().mean())
             if n_time_bins > 1:
                 loss = loss + 0.001 * model.readout.diff(dim=-1).square().mean()
