@@ -45,18 +45,25 @@ def evaluate_seen(encoder, training, queries, images, scorer, device, size, seed
     return results
 
 
+def seen_folds(raw, seed, tasks=("task2", "task3")):
+    folds = {}
+    if "task2" in tasks:
+        folds["task2"] = ({session: counts for session, counts in raw.items() if session != "session4"},
+                          {"session4": raw["session4"]})
+    if "task3" in tasks:
+        repeats = {session: split_repeats(counts, seed + index)
+                   for index, (session, counts) in enumerate(raw.items())}
+        folds["task3"] = ({session: pair[0] for session, pair in repeats.items()},
+                          {session: pair[1] for session, pair in repeats.items()})
+    return folds
+
+
 def run_seen(args, root, catalog, images, scorer, device, started):
     output = {"device": str(device), "seed": args.seed, "epochs": args.epochs, "mice": {}}
     for mouse in ("mice1", "mice2"):
         raw = grouped_blocks(root, catalog, mouse, device, len(images))
-        task2_fit = {session: counts for session, counts in raw.items() if session != "session4"}
-        task2_queries = {"session4": raw["session4"]}
-        task3_folds = {session: split_repeats(counts, args.seed + index)
-                       for index, (session, counts) in enumerate(raw.items())}
-        task3_fit = {session: pair[0] for session, pair in task3_folds.items()}
-        task3_queries = {session: pair[1] for session, pair in task3_folds.items()}
         output["mice"][mouse] = {}
-        for task, fit, queries in (("task2", task2_fit, task2_queries), ("task3", task3_fit, task3_queries)):
+        for task, (fit, queries) in seen_folds(raw, args.seed).items():
             encoder = fit_glyph_encoder(fit, images, epochs=args.epochs, seed=args.seed)
             rows = evaluate_seen(encoder, fit, queries, images, scorer, device, args.ocf_per_session, args.seed)
             for row in rows:
@@ -66,14 +73,140 @@ def run_seen(args, root, catalog, images, scorer, device, started):
             args.output.write_text(json.dumps(output, indent=2) + "\n")
 
 
+def adaptation_fold(templates, observed, images, score, device, args):
+    from glyph_retrieval import assign_glyphs
+    from glyph_session_adaptation import session_adaptation_logits
+
+    reference = (images >= 128).cpu().numpy()
+    labels = torch.arange(len(images), device=device)
+    selection = np.random.default_rng(args.seed).choice(len(images), min(len(images), args.ocf_per_session),
+                                                        replace=False)
+    sampled = torch.as_tensor(selection, device=device)
+    rows, calibration = [], {}
+    for view in args.adapt_views:
+        variants, calibration[view] = session_adaptation_logits(observed, templates, view)
+        baseline = {}
+        for name, logits in variants.items():
+            top = logits.topk(5, dim=1).indices
+            top5 = float((top == labels[:, None]).any(dim=1).float().mean())
+            for rule, chosen in (("map", top[:, 0]), ("balanced", assign_glyphs(logits))):
+                prediction = reference[chosen[sampled].cpu().numpy()]
+                values = np.asarray(score(prediction, reference[selection], device=str(device), batch_size=4))
+                if name == "baseline":
+                    baseline[rule] = values
+                delta = values - baseline[rule]
+                rows.append({"view": view, "template": name, "decision": rule,
+                             "ocf": float(values.mean()), "ocf_n": len(values),
+                             "paired_ocf_delta": float(delta.mean()),
+                             "paired_ocf_se": float(delta.std(ddof=1) / len(delta)**0.5) if len(delta) > 1 else None,
+                             "top1": float((chosen == labels).float().mean()), "top_n": len(labels),
+                             "map_top5": top5})
+    return rows, calibration
+
+
+def run_adaptation(args, root, catalog, images, scorer, device, started):
+    output = {"mode": "adaptation", "device": str(device), "seed": args.seed, "epochs": args.epochs,
+              "ocf_per_session": args.ocf_per_session, "mice": {}}
+    for mouse in args.adapt_mice:
+        raw = grouped_blocks(root, catalog, mouse, device, len(images))
+        output["mice"][mouse] = {}
+        for session in args.adapt_sessions:
+            fit = {name: counts for name, counts in raw.items() if name != session}
+            observed = raw[session]
+            encoder = fit_glyph_encoder(fit, images, epochs=args.epochs, seed=args.seed)
+            templates = make_count_templates(encoder, images, fit).for_recording(session, observed)["shrinkage"]
+            rows, calibration = adaptation_fold(templates, observed, images, scorer, device, args)
+            for row in rows:
+                print(json.dumps({"mouse": mouse, "session": session, **row}), flush=True)
+            output["mice"][mouse][session] = {"training": list(fit), "calibration": calibration, "metrics": rows}
+            output["seconds"] = time.monotonic() - started
+            args.output.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
+
+
+def evaluate_negative_binomial(templates, training, queries, images, scorer, device, task, size, seed):
+    from glyph_negative_binomial import fit_count_dispersion, negative_binomial_template_logits
+    from glyph_retrieval import assign_glyphs
+
+    template, view = ("shrinkage", "rate") if task == "task2" else ("forward", "timed")
+    alpha = fit_count_dispersion(training, view)
+    labels = torch.arange(len(images), device=device)
+    bank = (images >= 128).cpu().numpy()
+    random = np.random.default_rng(seed)
+    sample_size = min(len(images), max(1, size // len(queries)))
+    references, predictions, hits, top5 = [], {}, {}, {}
+    for session, observed in queries.items():
+        selection = random.choice(len(images), sample_size, replace=False)
+        selected = torch.as_tensor(selection, device=device)
+        references.append(bank[selection])
+        rates = templates.for_recording(session, observed)[template]
+        scores = {"poisson": count_template_logits(observed, rates, view),
+                  "negative_binomial": negative_binomial_template_logits(observed, rates, view, alpha)}
+        for name, logits in scores.items():
+            top = logits.topk(5, dim=1).indices
+            top5[name] = top5.get(name, 0) + int((top == labels[:, None]).any(dim=1).sum())
+            decisions = {"map": top[:, 0]}
+            if task == "task2":
+                decisions["balanced"] = assign_glyphs(logits)
+            for rule, chosen in decisions.items():
+                key = (name, rule)
+                predictions.setdefault(key, []).append(bank[chosen[selected].cpu().numpy()])
+                hits[key] = hits.get(key, 0) + int((chosen == labels).sum())
+
+    reference = np.concatenate(references)
+    n = len(queries) * len(images)
+    rows, baseline = [], {}
+    for (name, rule), blocks in predictions.items():
+        values = np.asarray(scorer(np.concatenate(blocks), reference, device=str(device), batch_size=4))
+        if name == "poisson":
+            baseline[rule] = values
+        difference = values - baseline[rule]
+        rows.append({"likelihood": name, "template": template, "view": view, "decision": rule,
+                     "ocf": float(values.mean()), "ocf_n": len(values),
+                     "paired_ocf_delta": float(difference.mean()),
+                     "paired_ocf_se": float(difference.std(ddof=1) / len(values)**0.5) if len(values) > 1 else None,
+                     "top1": hits[(name, rule)] / n, "map_top5": top5[name] / n, "top_n": n})
+    summary = {"features": len(alpha), "nonzero_fraction": float((alpha > 0).float().mean()),
+               "mean_alpha": float(alpha.mean()), "median_alpha": float(alpha.median()), "max_alpha": float(alpha.max())}
+    return {"dispersion": summary, "metrics": rows}
+
+
+def run_negative_binomial(args, root, catalog, images, scorer, device, started):
+    output = {"mode": "negative-binomial", "device": str(device), "seed": args.seed, "epochs": args.epochs,
+              "ocf_images_per_task": args.nb_ocf_images, "mice": {}}
+    for mouse in args.nb_mice:
+        raw = grouped_blocks(root, catalog, mouse, device, len(images))
+        output["mice"][mouse] = {}
+        for task, (fit, queries) in seen_folds(raw, args.seed, args.nb_tasks).items():
+            print(f"{mouse} {task}: fitting encoder on {list(fit)} and evaluating {list(queries)}", flush=True)
+            encoder = fit_glyph_encoder(fit, images, epochs=args.epochs, seed=args.seed)
+            templates = make_count_templates(encoder, images, fit)
+            result = evaluate_negative_binomial(templates, fit, queries, images, scorer, device,
+                                                task, args.nb_ocf_images, args.seed)
+            output["mice"][mouse][task] = {"training": list(fit), "queries": list(queries), **result}
+            output["seconds"] = time.monotonic() - started
+            print(json.dumps({"mouse": mouse, "task": task, **result}), flush=True)
+            args.output.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--epochs", type=int, default=18)
     parser.add_argument("--ocf-per-session", type=int, default=32)
     parser.add_argument("--seed", type=int, default=211)
-    parser.add_argument("--mode", choices=("unseen", "seen"), default="unseen")
+    parser.add_argument("--mode", choices=("unseen", "seen", "adaptation", "negative-binomial"), default="unseen")
+    parser.add_argument("--adapt-mice", nargs="+", choices=("mice1", "mice2"), default=("mice2",))
+    parser.add_argument("--adapt-sessions", nargs="+", choices=("session1", "session2", "session3", "session4"),
+                        default=("session2", "session4"))
+    parser.add_argument("--adapt-views", nargs="+", choices=("rate", "timed"), default=("rate",))
+    parser.add_argument("--nb-mice", nargs="+", choices=("mice1", "mice2"), default=("mice1", "mice2"))
+    parser.add_argument("--nb-tasks", nargs="+", choices=("task2", "task3"), default=("task2", "task3"))
+    parser.add_argument("--nb-ocf-images", type=int, default=128, help="Paired OCF sample per mouse and task")
     parser.add_argument("--output", type=Path, default=Path("/kaggle/working/encoding.json"))
     args = parser.parse_args()
+    if args.ocf_per_session < 1:
+        parser.error("--ocf-per-session must be positive")
+    if args.mode == "negative-binomial" and args.nb_ocf_images < 4:
+        parser.error("--nb-ocf-images must be at least 4")
     started = time.monotonic()
     torch.set_num_threads(4)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -83,6 +216,12 @@ def main():
     task_score = official_scorer(root)
     if args.mode == "seen":
         run_seen(args, root, catalog, images, task_score, device, started)
+        return
+    if args.mode == "adaptation":
+        run_adaptation(args, root, catalog, images, task_score, device, started)
+        return
+    if args.mode == "negative-binomial":
+        run_negative_binomial(args, root, catalog, images, task_score, device, started)
         return
     train, hold = split_glyphs(len(images), 320, args.seed, device)
     rng = np.random.default_rng(args.seed + 1)
