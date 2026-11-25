@@ -36,9 +36,14 @@ def calibration_for(training, images, task, device, args, n_bins):
 
 
 def evaluate(model, query, images, *, task, device, score, size, seed, similarity=None,
-             temperatures=None, balance=False):
+             temperatures=None, balance=False, contour=None, poisson=None, core_only=False):
     if similarity is not None:
         from glyph_mbr import glyph_medoid, glyph_posterior
+    if contour is not None:
+        from glyph_contour_retrieval import contour_retrieval_scores
+    if poisson is not None:
+        from glyph_contour_retrieval import blend_contour_poisson
+        from glyph_encoding import count_template_logits
 
     random = np.random.default_rng(seed)
     masks = (images >= 128).to(torch.uint8) * 255
@@ -51,16 +56,28 @@ def evaluate(model, query, images, *, task, device, score, size, seed, similarit
         selection = torch.as_tensor(random.choice(len(images), sample_size, replace=False), device=device)
         references.append(images[selection])
 
-        for name, logits in {**components, "fused": fused}.items():
+        candidates = {} if core_only else components.copy()
+        candidates["fused"] = fused
+        if contour is not None:
+            candidates.update(contour_retrieval_scores(contour, counts, session))
+        if poisson is not None:
+            rates = poisson.for_recording(session, counts)["forward"]
+            poisson_logits = count_template_logits(counts, rates, "timed")
+            candidates["poisson_forward_timed"] = poisson_logits
+            candidates["contour_poisson_blend"] = blend_contour_poisson(candidates["contour_ridge"], poisson_logits)
+        for name, logits in candidates.items():
             top = logits.topk(5, dim=1).indices
             hits.setdefault(name, []).append((int((top[:, 0] == labels).sum()),
                                              int((top == labels[:, None]).any(dim=1).sum())))
             predictions.setdefault(name, []).append(masks[top[selection, 0]])
+            if name.startswith("contour_"):
+                unique.setdefault(name, []).append(top[:, 0].unique().numel() / len(top))
 
         assigned = assign_glyphs(fused)
         hits.setdefault("fused_assignment", []).append((int((assigned == labels).sum()), None))
         predictions.setdefault("fused_assignment", []).append(masks[assigned[selection]])
-        predictions.setdefault("fused_posterior", []).append(posterior_images(fused[selection], images))
+        if not core_only:
+            predictions.setdefault("fused_posterior", []).append(posterior_images(fused[selection], images))
         if similarity is not None:
             for scale, temperature in temperatures.items():
                 for balanced in ((False, True) if balance else (False,)):
@@ -94,21 +111,26 @@ def run_mouse(mouse, device, root, catalog, score, args):
     images = load_images(root, device)
     groups = grouped_blocks(root, catalog, mouse, device, len(images))
     n_bins = catalog["window_ms"] // BIN_MS
-    similarity = None
-    if args.mbr:
-        from glyph_mbr import gallery_similarity
+    gallery = similarity = None
+    if args.mbr or args.contour_regression:
+        from glyph_mbr import contour_signatures, similarity_from_signatures
 
-        similarity = gallery_similarity(images)
+        gallery = contour_signatures(images)
+        if args.mbr:
+            similarity = similarity_from_signatures(*gallery)
     print(f"{mouse} on {device}: loaded {len(groups)} sessions", flush=True)
-    task2_train = {session: counts for session, counts in groups.items() if session != "session4"}
-    task2_query = {"session4": groups["session4"]}
-    task3_folds = {session: split_repeats(counts, args.seed + offset)
-                   for offset, (session, counts) in enumerate(groups.items())}
-    task3_train = {session: fold[0] for session, fold in task3_folds.items()}
-    task3_query = {session: fold[1] for session, fold in task3_folds.items()}
+    folds = {}
+    if "task2" in args.tasks:
+        folds["task2"] = ({session: counts for session, counts in groups.items() if session != "session4"},
+                          {"session4": groups["session4"]})
+    if "task3" in args.tasks:
+        task3_folds = {session: split_repeats(counts, args.seed + offset)
+                       for offset, (session, counts) in enumerate(groups.items())}
+        folds["task3"] = ({session: fold[0] for session, fold in task3_folds.items()},
+                          {session: fold[1] for session, fold in task3_folds.items()})
 
     result = {"mouse": mouse, "device": str(device), "tasks": {}}
-    for task, training, query in (("task2", task2_train, task2_query), ("task3", task3_train, task3_query)):
+    for task, (training, query) in folds.items():
         task_started = time.monotonic()
         print(f"{mouse} {task}: fitting {list(training)} and evaluating {list(query)}", flush=True)
         calibration = temperatures = None
@@ -118,9 +140,23 @@ def run_mouse(mouse, device, root, catalog, score, args):
             print(json.dumps({"mouse": mouse, "task": task, "mbr_calibration": calibration}), flush=True)
         model = fit_retrieval(as_trial_blocks(training), len(images), device=device, seed=args.seed,
                               epochs=args.epochs, images=images, n_bins=n_bins)
+        contour = None
+        if args.contour_regression:
+            from glyph_contour_retrieval import fit_contour_retrieval
+
+            contour = fit_contour_retrieval(training, *gallery, task=task, view=args.contour_view,
+                                            n_bins=n_bins, seed=args.seed, nonlinear=args.contour_fourier)
+        poisson = None
+        if args.compare_poisson:
+            from glyph_encoding import fit_glyph_encoder, make_count_templates
+
+            encoder = fit_glyph_encoder(training, images, n_time_bins=n_bins, epochs=args.poisson_epochs,
+                                        seed=args.seed)
+            poisson = make_count_templates(encoder, images, training)
         metrics = evaluate(model, query, images, task=task, device=device, score=score,
                            size=args.ocf_images, seed=args.seed, similarity=similarity,
-                           temperatures=temperatures, balance=args.mbr_balance)
+                           temperatures=temperatures, balance=args.mbr_balance, contour=contour,
+                           poisson=poisson, core_only=args.core_only)
         result["tasks"][task] = {"seconds": time.monotonic() - task_started, "metrics": metrics}
         if calibration is not None:
             result["tasks"][task]["mbr_calibration"] = calibration
@@ -133,16 +169,31 @@ def main():
     parser.add_argument("--ocf-images", type=int, default=48, help="Paired OCF images per mouse, task and decoder")
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--seed", type=int, default=211)
+    parser.add_argument("--tasks", nargs="+", choices=("task2", "task3"), default=("task2", "task3"))
     parser.add_argument("--mbr", action="store_true", help="Test contour-aware hard gallery predictions")
     parser.add_argument("--mbr-balance", action="store_true", help="Also test the complete-block Sinkhorn posterior")
     parser.add_argument("--mbr-temperature-scales", nargs="+", type=float, default=(1.0,),
                         help="Multipliers for the nested-calibrated temperature")
+    parser.add_argument("--contour-regression", action="store_true",
+                        help="Fit spike-to-contour regression for hard gallery retrieval")
+    parser.add_argument("--contour-fourier", action="store_true", help="Also fit a nonlinear ridge contour readout")
+    parser.add_argument("--contour-view", choices=("evoked-multiscale", "stabilized"), default="evoked-multiscale")
+    parser.add_argument("--compare-poisson", action="store_true",
+                        help="Compare contour ridge to Poisson forward/timed and their row-standardized blend")
+    parser.add_argument("--poisson-epochs", type=int, default=18)
+    parser.add_argument("--core-only", action="store_true", help="Score fused and enabled hard-gallery methods only")
     parser.add_argument("--output", type=Path, default=Path("/kaggle/working/retrieval_validation.json"))
     args = parser.parse_args()
+    if args.compare_poisson:
+        args.contour_regression = True
+        if args.poisson_epochs < 1:
+            parser.error("--poisson-epochs must be positive")
     if not 4 <= args.ocf_images <= 128:
         parser.error("--ocf-images must be between 4 and 128")
     if args.mbr_balance and not args.mbr:
         parser.error("--mbr-balance requires --mbr")
+    if args.contour_fourier and not args.contour_regression:
+        parser.error("--contour-fourier requires --contour-regression")
     if not all(np.isfinite(scale) and scale > 0 for scale in args.mbr_temperature_scales):
         parser.error("--mbr-temperature-scales requires positive finite scales")
     torch.set_num_threads(2)
@@ -150,9 +201,14 @@ def main():
     root = locate_data()
     catalog = load_catalog(root)
     score = official_scorer(root)
-    result = {"seed": args.seed, "epochs": args.epochs, "ocf_images": args.ocf_images, "results": []}
+    result = {"seed": args.seed, "epochs": args.epochs, "tasks": args.tasks,
+              "ocf_images": args.ocf_images, "results": []}
     if args.mbr:
         result.update(mbr_balance=args.mbr_balance, mbr_temperature_scales=args.mbr_temperature_scales)
+    if args.contour_regression:
+        result.update(contour_view=args.contour_view, contour_fourier=args.contour_fourier)
+    if args.compare_poisson:
+        result.update(poisson_epochs=args.poisson_epochs, contour_poisson_weights=[0.5, 0.5])
     devices = [torch.device(f"cuda:{index}") for index in range(torch.cuda.device_count())]
     devices = devices or [torch.device("cpu")]
     print(f"Validation devices: {devices}", flush=True)
