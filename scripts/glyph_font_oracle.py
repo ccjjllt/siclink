@@ -30,7 +30,7 @@ UNICODE_BLOCKS = ((0x3400, 0x4DBF), (0x4E00, 0x9FFF))
 SUPERSAMPLED_SIZE = 128
 
 
-def render_font(family, version, directory, license_path):
+def render_font(family, version, directory, license_path, *, return_codepoints=False):
     stem = f"Noto{directory}CJKsc-Regular.otf"
     path = f"{directory}/OTF/SimplifiedChinese/{stem}"
     url = f"{RAW}/{version}/{path}"
@@ -47,6 +47,7 @@ def render_font(family, version, directory, license_path):
 
     font = ImageFont.truetype(BytesIO(font_bytes), size=112, layout_engine=ImageFont.Layout.BASIC)
     masks = np.empty((len(glyphs), 64, 64), dtype=np.uint8)
+    codepoints = np.empty(len(glyphs), dtype=np.int64) if return_codepoints else None
     signatures = set()
     count = 0
     for codepoint in glyphs:
@@ -60,12 +61,17 @@ def render_font(family, version, directory, license_path):
         if signature not in signatures:
             signatures.add(signature)
             masks[count] = bitmap
+            if codepoints is not None:
+                codepoints[count] = codepoint
             count += 1
     provenance = {"family": family, "version": version, "source": url,
                   "sha256": sha256(font_bytes).hexdigest(), "license": "SIL OFL 1.1",
                   "license_url": f"{REPOSITORY}/blob/{version}/{license_path}",
                   "covered_codepoints": len(glyphs), "rendered_masks": count}
-    return torch.from_numpy(masks[:count]), provenance
+    rendered = torch.from_numpy(masks[:count])
+    if codepoints is not None:
+        return rendered, provenance, torch.from_numpy(codepoints[:count])
+    return rendered, provenance
 
 
 @dataclass(frozen=True)
