@@ -34,6 +34,10 @@
 
 2026-11-26 约 09:07（北京时间）复核，公开榜有 76 支队伍。Mevlana Yalçın 以 **56.78417** 登顶，`ccjjllt` 的 v14 以 **25.45723** 位列第 35。公开 Code 仍只列出 Moran Zavdi 和 Avik Das 的 Notebook，暂未找到可核对到高于 v14 分数的公开实现。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code)
 
+2026-11-26 约 12:33（北京时间）复核，公开榜有 78 支队伍，第一为 Mevlana Yalçın（56.78417），`ccjjllt` 的 25.45723 位列第 37。按分数查公开 Code，仍只有上面两个 Notebook。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code)
+
+2026-11-26 约 13:33（北京时间）通过 Kaggle API 核对，榜上 80 支队伍，前三名为 Mevlana Yalçın 56.78417、Bowen1314 54.05689、Frozen Kiwi 52.91478。`ccjjllt` 以 25.45723 位列第 39。按成绩排序的公开代码查询仍返回 Moran Zavdi 和 Avik Das 的两个 Notebook，未找到这三个榜单成绩对应的公开实现。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code)
+
 ## v12 的依赖来源
 
 - 放电记录、训练字图及 OCF 代码来自主办方参赛包，受比赛条款约束。v12 在 Kaggle 用官方训练放电和字图拟合。 [数据与参赛包](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/data) · [比赛规则](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/rules)
