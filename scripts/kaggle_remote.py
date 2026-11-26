@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import zipfile
@@ -29,7 +30,17 @@ def run_cli(args, command):
     environment["KAGGLE_API_TOKEN"] = token
     for variable in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
         environment[variable] = args.proxy
-    return subprocess.run(["kaggle", "kernels", *command], env=environment, check=False).returncode
+    invocation = ["kaggle", "kernels", *command]
+    if command[0] != "push":
+        return subprocess.run(invocation, env=environment, check=False).returncode
+
+    result = subprocess.run(invocation, env=environment, check=False, capture_output=True, text=True)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    # Kaggle CLI can report a rejected push while returning exit status zero.
+    rejected = any(line.lstrip().startswith("Kernel push error:")
+                   for line in (result.stdout + "\n" + result.stderr).splitlines())
+    return result.returncode or int(rejected)
 
 
 def stage_entry(entry, includes, source_root, stage, entry_args=()):

@@ -30,14 +30,33 @@ from google.colab import drive
 drive.mount("/content/drive")
 ```
 
-也可以在 Colab 直接从 Kaggle 拉取数据。以下为用户已有项目的运行示例。脚本应从其所属项目运行，或在为 SiClink 实现对应脚本后替换路径。Drive 里已备齐数据时可省去 Kaggle token 参数。运行含凭证的命令时关闭 shell trace，避免凭证出现在日志、Notebook 或提交包中。
+也可以在 Colab 直接从 Kaggle 拉取数据。当前 `colabx exec --env` 会把环境变量展开进执行代码，再把代码记入本地会话历史。需要 `KAGGLE_API_TOKEN` 时，可以将凭证文件上传到私人临时会话，待下载脚本读取后立即删除。Drive 里已备齐数据时可直接挂载。
 
 ```sh
-colabx exec -s gpu1 -f scripts/colab_bootstrap_remote.py --timeout 1800 \
-  --env KAGGLE_API_TOKEN="$(cat "$HOME/.kaggle/access_token_ccjjllt_check")"
+colabx upload -s gpu1 "$HOME/.kaggle/access_token_ccjjllt_check" .siclink-kaggle-token
 ```
 
-已有项目的后台保活和产物回收命令如下。
+下载脚本可将凭证只传给 Kaggle 子进程，并在下载前移除会话中的文件。
+
+```python
+from pathlib import Path
+import os
+import subprocess
+
+token_path = Path("/content/.siclink-kaggle-token")
+try:
+    kaggle_env = {**os.environ, "KAGGLE_API_TOKEN": token_path.read_text().strip()}
+finally:
+    token_path.unlink(missing_ok=True)
+
+subprocess.run([
+    "kaggle", "competitions", "download",
+    "-c", "siclink-mouse-visual-reconstruction-bci-challenge",
+    "-p", "/content/siclink-data",
+], env=kaggle_env, check=True)
+```
+
+以下是用户已有项目的后台保活、产物回收和状态查看命令，应从脚本所属项目运行。
 
 ```sh
 mkdir -p /tmp/campaign2
