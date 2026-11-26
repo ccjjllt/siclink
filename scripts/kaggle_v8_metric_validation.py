@@ -60,11 +60,13 @@ def fit_v8(training, images, seed):
 
 
 @torch.no_grad()
-def shortlist(model, likelihood, counts, session):
+def atlas_scores(model, likelihood, counts, session, *, rates=None):
+    """Calculate the complete atlas scores used by the v8 proposal policy."""
     normalized, _ = standardize(feature_view(counts, "evoked-total"), model.normalization[session])
     direct = model.decoder.predict_variants(session, normalized.mean(dim=1))
-    with torch.autocast(device_type="cuda"):
-        rates = model.encoder.expected_counts(model.atlas.images, session, batch_size=192).float()
+    if rates is None:
+        with torch.autocast(device_type="cuda"):
+            rates = model.encoder.expected_counts(model.atlas.images, session, batch_size=192).float()
     base = font_scores(model.atlas, rates, counts, direct)
     v4 = standardized(base["font_fused"])
     ridge = contour_retrieval_scores(model.contour, counts, session)["contour_ridge"]
@@ -78,6 +80,12 @@ def shortlist(model, likelihood, counts, session):
                    "decoded_contour": base["font_contour"], "ridge_contour_raw": ridge,
                    "predictive_error": predictive, "noise_raw": noise,
                    "lexical": model.prior.lexical_log.expand_as(v8), "unseen": model.prior.unseen_log.expand_as(v8)})
+    return scores
+
+
+@torch.no_grad()
+def shortlist(model, likelihood, counts, session):
+    scores = atlas_scores(model, likelihood, counts, session)
     # Preserve the complete v8 argmax before the ranker's clipped feature scale.
     baseline = scores["v8"].argmax(dim=1)
     return pack_atlas_candidates(scores, NOMINATIONS, baseline="v8"), baseline
