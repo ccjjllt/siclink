@@ -80,6 +80,12 @@ def sparse_assignment(candidates, objective, fallback):
     return prediction, False
 
 
+def shortlisted_v9_score(v9, candidates):
+    centered = v9 - v9.mean(dim=1, keepdim=True)
+    scaled = centered / centered.square().mean().sqrt().clamp_min(1e-6)
+    return scaled.gather(1, candidates.indices)
+
+
 def metric_labels(candidates, references, masks, scorer, device, chunk_size):
     rows, columns = candidates.valid.nonzero(as_tuple=True)
     exact, unique_pairs = unique_pair_ocf(candidates.indices[rows, columns], references[rows], masks,
@@ -108,9 +114,7 @@ def evaluate(query_matrices, baseline, ranker, permutation, selected, masks, ene
     candidates = shortlist(query_matrices, baseline, energy, ink)
     expected = ranker.predict_ocf(candidates)
     v9 = query_matrices["v9"]
-    centered = v9 - v9.mean(dim=1, keepdim=True)
-    global_z = centered / centered.square().mean().sqrt().clamp_min(1e-6)
-    global_z = global_z.gather(1, candidates.indices)
+    global_z = shortlisted_v9_score(v9, candidates)
     choices = {"v9_assignment": baseline, "v9_independent": v9.argmax(dim=1),
                "metric_independent_anchor4": ranker.select(candidates, anchor_ocf=4)}
     fallback = {}
