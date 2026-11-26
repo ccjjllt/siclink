@@ -2,6 +2,8 @@
 
 核对日期为 2026 年 11 月 24 日，时区为北京时间。Kaggle 显示这是 SiClink 主办的 Community 比赛，当时有 54 支队伍。总奖金为 10,000 美元，最终截止为 **2027 年 1 月 20 日 18:00**。每队最多 5 人，每个 UTC 日可提交 1 次。[赛题](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge) · [时间表](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/overview/timeline) · [规则](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/rules)
 
+2026 年 11 月 25 日通过 Kaggle 规则页核对。B(6) 允许使用参赛者都能免费获得的公开外部数据，或满足条款所述合理性标准的资源。B(5) 要求在提交材料中注明所用第三方软件、预训练模型和外部数据的来源及许可证。[规则](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/rules)
+
 ## 数据与任务
 
 数据来自两只小鼠，各有 5 个 session。每次刺激展示 250 ms，spike 时间以 30 kHz 采集。同一只小鼠的 unit 索引跨 session 一致，两只鼠分别有 134 和 78 个 unit。共享训练集覆盖两只鼠的 `session1`–`session4`，包含 2,748 种汉字，每个鼠、session、字符组合有 4 次带标签的 trial，共 87,936 条。正式数据根目录为 `siclink_chinese_character_decoding_dataset/`，图像标签在 `train/pictures.npz`。[Data](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/data)
@@ -24,4 +26,16 @@
 
 榜首 Bowen1314 的 54.01486 和第二名 Oleg Kurilov 的 51.11346 暂未找到对应的公开实现。Moran Zavdi 的 22.63617 能与公开榜成绩和预测产物对应，公开 Notebook 主要校验并重打包既有预测。Avik Das 的 Notebook 则公开了从训练到提交文件生成的实现。[公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Moran Notebook](https://www.kaggle.com/code/moranzavdi/siclink-ocf-audit-v1-drift-14-point-verifier) · [Avik Notebook](https://www.kaggle.com/code/avikdas567/spatio-temporal-cortical-visual-bci-reconstruction)
 
-2026-11-25 约 14:45（北京时间）重新查询，榜上有 71 支队伍，前三名为 Bowen1314 54.05689、Frozen Kiwi 52.91478、Oleg Kurilov 51.42620。公开 Code 仍返回上述两个 Notebook，Discussions 仍只有 OCF 帖。Moran 的 Notebook 可核验已打分的附件，榜首三个成绩暂无对应的公开实现。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code)
+2026-11-25 约 17:58（北京时间）重新查询，榜上有 71 支队伍，前三名为 Bowen1314 54.05689、Frozen Kiwi 52.91478、Oleg Kurilov 51.42620，`ccjjllt` 以 20.54607 位列第 43。17:39 核对的公开 Code 仍是上述两个 Notebook，Discussions 仍只有 OCF 帖。Moran 的 Notebook 可核验已打分的附件，榜首三个成绩暂无对应的公开实现。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code)
+
+2026-11-25 约 23:25（北京时间）复核，公开榜为 72 支队伍，前三名分数不变，`ccjjllt` 位列第 45。按分数查询比赛公开 Code 仍只返回 Moran Zavdi 和 Avik Das 的两个 Notebook。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code)
+
+2026-11-26 约 02:37（北京时间）复核，公开榜有 74 支队伍。前三位仍为 Bowen1314（54.05689）、Frozen Kiwi（52.91478）、Oleg Kurilov（51.42620），`ccjjllt` 以 20.54607 位列第 46。按分数再查仅有上述两个公开 Notebook。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code)
+
+2026-11-26 约 09:07（北京时间）复核，公开榜有 76 支队伍。Mevlana Yalçın 以 **56.78417** 登顶，`ccjjllt` 的 v14 以 **25.45723** 位列第 35。公开 Code 仍只列出 Moran Zavdi 和 Avik Das 的 Notebook，暂未找到可核对到高于 v14 分数的公开实现。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code)
+
+## v12 的依赖来源
+
+- 放电记录、训练字图及 OCF 代码来自主办方参赛包，受比赛条款约束。v12 在 Kaggle 用官方训练放电和字图拟合。 [数据与参赛包](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/data) · [比赛规则](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/rules)
+- Task 1 的公开字库由 Noto Sans CJK SC Regular `Sans2.004` 渲染，采用 SIL Open Font License 1.1。排序先验使用 Unihan `17.0.0` 的 `kTGH` 和 `kHanyuPinlu`，采用 Unicode License V3。源文件及 SHA-256 记录在 `outputs/siclink-candidate-v8/source_candidates.json` 的 `atlas` 和 `prior.unicode` 下，由后续候选沿用。 [Noto 字体](https://github.com/notofonts/noto-cjk/blob/Sans2.004/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf) · [Noto 许可](https://github.com/notofonts/noto-cjk/blob/Sans2.004/LICENSE) · [Unihan 字段](https://www.unicode.org/reports/tr38/) · [Unicode 许可](https://www.unicode.org/license.txt)
+- 候选脚本直接调用 PyTorch、NumPy、SciPy、Pillow 和 fontTools。PyTorch 主体为 BSD 式许可，NumPy 和 SciPy 为 BSD 3-Clause，Pillow 为 HPND，fontTools 为 MIT。 [PyTorch](https://github.com/pytorch/pytorch/blob/main/LICENSE) · [NumPy](https://numpy.org/doc/stable/license.html) · [SciPy](https://github.com/scipy/scipy/blob/main/LICENSE.txt) · [Pillow](https://github.com/python-pillow/Pillow/blob/main/LICENSE) · [fontTools](https://github.com/fonttools/fonttools/blob/main/LICENSE)

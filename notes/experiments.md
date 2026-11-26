@@ -222,3 +222,218 @@ Task 1 测试将方向轮廓候选加入 mice2 已在用的精确 OCF 重排，�
 | Task 1 向 mice2 迁移重排 | 种子 2209，640 张配对图，160 个未见字。v9 的原 mice2 排序器为 22.72，加轮廓候选后用 2 分锚定为 24.05（+1.33，按字标准误 0.79），4 分锚定为 24.01（+1.28，标准误 0.80）。2 分锚定四个录制分别 +4.04/−1.88/+0.07/+3.08，只用轮廓融合排序为 21.25。Kaggle GPU 用时 733 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-v9-metric-mice2) |
 | Task 2 全局指派与精确 OCF | 两鼠分别留出 session2/4，共 384 张配对图。v9 指派为 24.30，4 分锚定的精确 OCF 指派为 25.44（+1.14，按字标准误 0.84），8 分为 25.07。逐行直接重排仅 22.87。mice1 的 4 分方案为 31.38 对 29.01（+2.37，标准误 1.42，录制变化 +1.44/+3.31），mice2 为 19.49 对 19.59。首版的 SciPy 索引类型与 PyTorch 不一致，修正版 Kaggle GPU 用时 319 秒。 [Kaggle 对照](https://www.kaggle.com/code/ccjjllt/siclink-task2-exact-metric) |
 | Task 1 迁移重排的独立复核 | 种子 613 排除 961 和 2209 的外层留出字，mice2 又评分 640 张配对图。v9 为 23.28，2 分锚定为 23.55（+0.28，按字标准误 0.63），4 分为 23.81（+0.53，标准误 0.64）。4 分方案在 session1 两轮分别 +4.61/+3.10（各 160 个互不重合的字，标准误 1.58/1.55）。另三个录制的结果不一致或变化很小，因此只为 session1 使用此方案。Kaggle GPU 用时 676 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-mice2-metric-recheck) |
+| Task 2 指派的独立录制复核 | mice1 改留出 session1/3，种子 509，320 张配对图。v9 指派为 23.54，4 分锚定为 23.61（+0.07，按字标准误 0.89），8 分锚定为 24.61（+1.07，标准误 0.82）。8 分方案在 mice1 的首轮为 +1.35（标准误 1.35），四份录制各为 +0.88/+0.93/+1.26/+1.77。正式候选只在 mice1 Task 2 使用 8 分锚定。Kaggle GPU 用时 167 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task2-mice1-metric-recheck) |
+
+### 候选 v10
+
+用 `kaggle_mice2_metric_update.py` 从全部 2,748 个训练字拟合重排，并仅对 mice2 session1 的 Task 1 使用 4 分锚定。该录制的 340 个查询各用 20 次重复，共更新 v9 的 253 条预测。Kaggle GPU 用时 332 秒。已检查 30,200 个官方 ID、顺序、64×64 灰度 PNG 和候选源包哈希。产物 SHA-256 为 `014ad8940a5afeaa6e6c55ee89e24efe066789ef7773e5572c51c545525fba26`。 [Kaggle v10 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v10)
+
+### 候选 v11
+
+用 `kaggle_task2_metric_update.py` 在四份有标签的 mice1 录制上轮流留出一份校准，其余三份拟合神经分数。汇合 512 个查询的 8,605 对精确 OCF 标签训练重排器。用全部四份训练录制拟合 `session5` 的神经分数，在候选边上用 8 分锚定求全局指派。2,748 个查询各有唯一字形，未触发原指派回退。v9 中的 378 条 mice1 Task 2 预测发生变化。Task 2 组件在 Kaggle GPU 用时 230 秒，SHA-256 为 `6a98a2614879d66a35dbd6d0cb6aa8bba266fbd528defde54ace7930c19e9663`。 [Kaggle Task 2 组件](https://www.kaggle.com/code/ccjjllt/siclink-task2-mice1-metric-update)
+
+Kaggle CPU 将 v10 与已核验的 Task 2 组件合并为 v11。相较 v9，实际更新 253 条 mice2 session1 Task 1 预测和 378 条 mice1 Task 2 预测。逐条核对两份来源、30,200 个官方 ID、顺序和 64×64 灰度 PNG。v11 的 SHA-256 为 `20e4dd1f80f63f5635f0bc5cf16369500bb4d15b2d2d3ea9971a8925b07f21e8`，选为下一次提交候选。正式最高分仍为 20.54607，2026-11-25 UTC 名额已使用，下一个窗口于北京时间 2026-11-26 08:00 开启。 [Kaggle v11 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v11) · [正式提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions)
+
+## 2026-11-25 第九轮研究
+
+Task 3 分开测量单试次神经信息和字形选择的损失。图库效用从精确 OCF 标注的视觉近邻与随机图对学习，用不重合的图库字形核对预测误差，再固定同一份放电后验比较旧轮廓代理与新效用。局部轮廓实验在同一候选池上比较标量和空间方向特征，学习相对 v11 首选的 OCF 差。两个实验均先留出独立放电试次，再做内部校准。 [结构化输出的隐式损失嵌入](https://www.jmlr.org/beta/papers/v21/20-097.html)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 3 局部方向轮廓重排 | 两鼠各 512 张配对图。v11 的 OCF 为 19.56/18.45，4 分锚定的标量重排为 19.50/18.20，加局部方向证据为 19.19/18.48（相对 v11 −0.37/+0.03，按字标准误 0.67/0.32）。8 分锚定下局部重排变化为 −0.34/−0.07。用已知参考图挑选，校准候选池的首位与最佳均分在两鼠分别为 18.22→35.15 和 18.51→33.62。Kaggle GPU 用时 291 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-local-rank) |
+| Task 3 放电对墨量的增量信息 | 逐鼠四个录制各留出一次试次，单试次预测对数墨量的相关为 0.66/0.73（每鼠 10,992 次），单用总放电计数为 0.24/0.07。在轮廓模型固定的前 8 个候选上，两鼠各 64 张配对图的基准为 17.21/14.86，加入预测墨量和粗空间分布变化 −0.02/+0.35，按计数分层打乱为 +0.26/+0.32。用参考图挑前 8 候选的诊断在两鼠各 24 张图上可提升 12.16/8.72。Kaggle CPU 用时 242 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-density-diagnostic) · [小鼠 V1 亮度和方向研究](https://www.eneuro.org/content/13/2/ENEURO.0281-25.2025.full) |
+| Task 3 同墨量困难负样本 | 两鼠各 512 张配对图。对比训练等量抽取 36 个负样本，难样本版本用 24 个墨量和轮廓能量接近的字符加 12 个广抽样；对照用 36 个广抽样。以 20% 权重和 v11 融合后，困难样本相对随机抽样的 OCF 变化为 −0.08/+0.07，按字标准误 0.31/0.36。困难样本版本在同墨量小池略提高识别率，单独用于全库时，两鼠 Top-5 均下降。Kaggle GPU 用时 124 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-hard-negatives) |
+| Task 3 精确图库效用与放电后验 | 用 6,307 个图库图对拟合 OCF，在另 320 个字的 1,003 对图上验证。预测 MAE 为 2.77，拟合值与精确 OCF 的相关为 0.874，旧轮廓代理的相关为 0.798。每鼠 384 张配对留出图，v11 为 17.29/17.55，只用新效用的后验选择为 17.28/17.06；加入 20% 去除均匀图库先验后的效用为 17.54/17.79（+0.26/+0.24，按字标准误 0.50/0.39）。前 32 字形只占平均约 15%/11% 后验质量。Kaggle GPU 用时 240 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-posterior-utility) |
+
+本轮仍选择已核验的 v11 作为下一次提交候选。精确图对拟合能改善图库的视觉效用估计，四项 Task 3 实验均未取得可复现的留出 OCF 增益。 [Kaggle v11 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v11)
+
+## 2026-11-25 第十轮研究
+
+Task 1 分别测量录制内的候选占用和同鼠录制间的对应关系。录制内允许预测字形重复，只对多个查询争用同一公开字形的概率加软惩罚，并留出字库外候选的概率。跨录制实验只使用共有字集已知的训练留出块，在独立打乱的四份录制上比较两两匹配、经第三个录制传递的证据和全局一致的联合匹配。 [GCCA](https://arxiv.org/abs/1605.09459) · [软对应配准](https://www.cise.ufl.edu/~anand/students/chui/tps-rpm.html)
+
+Task 3 将一对一用于约束隐含字符身份，先用独立训练重复校准首选预测的正确率，再对其他查询占用的同一候选做有限降权。另一项实验从放电预测左右和上下的局部笔画形态，测量其能否在同等候选数量下补充全字轮廓。 [字形组件的零样本解码](https://www.ijcai.org/proceedings/2021/85)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 1 四录制交叉匹配 | 两个不重合的留出字集，每个 320 个字。mice1 的两两指派身份准确率 14.90%/15.00%，引入两跳证据后为 17.19%/17.92%，强制四录制一致则为 12.76%/15.42%。mice2 的两跳准确率为 9.27%/8.85%，高于直接指派的 8.59%/8.33%。mice1 两个中间录制都支持的边覆盖 1.77%，其中 58.82%/70.59% 正确；拆重复后的稳定匹配准确率约 46%–48%。本项仅使用完整训练留出集测量身份，Kaggle CPU 用时 20 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-cycle-alignment) |
+| Task 3 可信首选的软排他 | 两鼠各 512 张与 v11 配对的留出图。完整 2,748 条的录制块中只有 2–18 条达到置信阈值，首选实际正确率约 7%。相对同一图库效用的独立后验，软排他变化 +0.00/+0.10 OCF；mice2 只改变 1 张留出预测。完整 Sinkhorn 降低了全部录制的身份对数损失，OCF 相对 v11 变化为 −0.11/+0.50（按字标准误 0.52/0.45）。Kaggle GPU 用时 274 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-soft-exclusion) |
+| Task 1 共享字库的软容量 | mice1 四录制独立打乱，每个留出块 320 个字，按 v9 配对评分 160 个。候选的潜在身份总概率超过 1 时降权，最终输出仍可重复。将候选效用修正限制在 ±3 OCF 时，四录制从 31.282 提至 31.919，差值 +0.638（按字标准误 0.317），逐录制 +1.425/+0.588/+0.260/+0.277。效用修正限制在 ±1 OCF 或直接软约束输出时，增益较小。Kaggle GPU 用时 395 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-latent-repertoire) |
+| Task 3 局部笔画候选先导 | 两鼠各取录制 2 和 4，每块配对评估 64 张。用局部笔画模型的候选替换原候选集最后四个，top-12 真实字形召回从 4.99%/4.33%/2.73%/3.09% 提至 6.04%/4.69%/3.49%/3.42%，保持全字形态分组的打乱对照均低于原候选集。256 张的首选 OCF 从 17.01 提至 17.53（差值标准误 0.36），32 张的 top-12 精确上限从 30.92 降至 27.31（差值标准误 4.48）。Kaggle CPU 用时 253 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-part-discovery) |
+| Task 1 跨录制高斯似然 | 同一组双鼠外层划分，配对 CCA 只使用拟合字。mice1 逐查询的同字似然准确率为 11.98%/10.73%，同一组坐标上的余弦为 5.65%/5.34%。两跳指派为 13.39%/13.12%，低于原 GCCA 的 17.19%/17.92%。mice2 的两跳结果为 8.54%/9.17%，GCCA 为 9.27%/8.85%。Kaggle CPU 用时 28 秒。 [Kaggle 版本 2](https://www.kaggle.com/code/ccjjllt/siclink-task1-cycle-alignment) · [概率 CCA](https://statistics.berkeley.edu/tech-reports/688) |
+| Task 3 字形位移与放电变异 | mice1 用 2,108 个字拟合前向放电编码器，320 个校准字拟合位移先验，另留出 320 个字、5,120 次试次。两个各含 67 个单元的子群轮流预测对方。共享位移相对零位移、各半独立位移和保留幅度的字形打乱对照，条件对数似然每半分别改善 +0.349、+0.077、+0.124 nats（按字标准误 0.014、0.007、0.014），四个录制均同方向。此项用已知留出字形条件化放电似然，尚无 OCF 结果。Kaggle CPU 用时 42 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-retinal-shift) · [小鼠视皮层位移建模](https://pmc.ncbi.nlm.nih.gov/articles/PMC9742335/) |
+| Task 1 软容量的独立复核 | 另一组 320 个不重合的字符中取 192 个字，在四个录制上配对，共 768 张。使用首轮的 ±3 OCF 修正，v9 的 30.318 变为 30.682（差值 +0.364，按字标准误 0.398），逐录制 −0.053/+1.502/−0.260/+0.267。两轮共 1,408 张图和 352 个留出字，加权差值 +0.49（标准误 0.26）。留出每字 4 次重复，正式每字 20 次。Kaggle GPU 用时 467 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-latent-repertoire-recheck) |
+| Task 3 局部笔画候选复核 | 双鼠各四个录制，合计 1,024 张配对图。实际 v11 策略 OCF 18.18，加入 15%/25% 局部笔画分数后为 18.28/18.17（差值 +0.11/−0.01，按字标准误 0.27/0.38），相对使用同一分数在原前 16 个候选内重排，额外变化 +0.02/−0.00。192 张图由参考图从候选中选出的上限提高 +1.75（标准误 1.32），相对打乱对照提高 +0.85（标准误 1.37）。Kaggle GPU 用时 173 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task3-part-v11-recheck) |
+| Task 3 字形位移重排 | mice1 四个录制，每块 128 张独立留出试次。冻结在内层校准得到的位移先验，在 v11 原前 16 个候选内重排。v11 为 18.823，位移修正权重 0.5/1.0 为 18.661/17.575（变化 −0.162/−1.249，按字标准误 0.261/0.505）。Top-1 身份准确率从 2.54% 变为 2.15%/1.17%。Kaggle CPU 用时 482 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task3-retinal-ranking) |
+
+本轮配对验证完毕，保留 v11 作为下一次提交候选。软容量的优势不够稳定，Task 3 两种重排均未验证出 OCF 增益。实验在 Kaggle CPU 或 T4 上完成。 [Kaggle v11 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v11)
+
+## 2026-11-25 第十一轮研究
+
+Task 1 将字形位移从单次放电扩展到多次重复。编码器、位移先验和验证字符分三组拟合或留出。闭集有 320 个从编码器整字排除的候选，以相同的群体增益模型比较零位移、边际均值、逐次独立位移、组内共享位移，以及保留幅度的方向打乱。灵长类视网膜研究提供了从放电推断未知位移的先例，本实验使用的是小鼠皮层的静态字形与有限的位移网格。 [位移与贝叶斯重建](https://www.nature.com/articles/s41467-024-52304-7) · [开放实现](https://github.com/wueric/wu-nature-comms-2024)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 3 字形放电率的 Gamma 后验 | 两鼠各有 384 张配对图，并用每鼠 10,992 条查询衡量全字库身份。相同后验均值下，对潜在放电率积分与直接用 Poisson 均值相比，前 16 候选 OCF 差值为 +0.026/+0.043（按字标准误 0.224/0.029）。对照 v11 的 18.597/18.513，Gamma 前 16 重排为 19.284/18.234（差值 +0.687/−0.279，标准误 0.736/0.431）。全字库等量融合略降身份对数损失，直接代入相同的收缩均值就已得到其中大部分增益。Kaggle GPU 用时 88 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-gamma-template) |
+| Task 1 多重复位移闭集诊断 | 2,172 字拟合、256 字校准、320 字留出。两鼠各 256 张配对 OCF，四个录制每字 4 次重复。逐次独立位移的 OCF 相对零位移，mice1 43.74→42.80（−0.94，标准误 1.41），mice2 31.19→33.39（+2.20，标准误 1.26）。mice2 的边际均值、共用位移和打乱对照分别变化 +1.03/+1.74/−0.24。mice2 的闭集 Top-1 20.55%→20.23%，四块身份 NLL 均下降，均值 5.757→5.446。使用留出训练图作已知候选的闭集有别于正式公开字体检索。Kaggle CPU 用时 223 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-shift-repeats) |
+| Task 3 匹配放电残差增强 | 保持原型锚点和分类器架构固定，以拟合试次估计的同录制、相近活动量的残差构造增强样本。八块合计 512 张配对图，真实试次分类器为 15.12，匹配增强为 15.41（差值 +0.29，标准误 0.25）。v11 为 17.11，以 20%/35% 融合增强分类器后为 16.95/16.34（差值 −0.16/−0.77，标准误 0.35/0.39）。35% 融合提高全部八块全字库 Top-5 召回，首选图的 OCF 下降。Kaggle CPU 用时 727 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-repeat-density-ratio) |
+| Task 3 残差分类器的后验和候选覆盖 | 新的试次划分，八块合计 512 张配对图。内层留出校准身份后验温度，外层 v11 为 17.57。沿用同一个视觉效用选择器，用 v11 或融合分类器的后验分别得 17.71/17.70（分类器相对 v11 后验 −0.01，按字标准误 0.09）。全字库 Top-5 从 4.06% 到 5.92%，等预算 top-16 召回从 9.73% 到 11.40%。64 张图用参考图选出的 top-16 OCF 上限从 43.91 到 46.93（+3.02，标准误 2.98），新增候选对已评分图的实际选图没有影响。Kaggle CPU 用时 810 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task3-repeat-posterior-utility) |
+| Task 2 按字形估计的跨天方差 | 双鼠外层留出 session2/4，共 512 张配对 OCF。用其他录制的轮换验证拟合时窗权重，保留全字库一对一指派。按字形估计方差相对同样学习权重的全局方差，在两鼠上分别 −0.56/−0.28 OCF（标准误 0.47/0.41）。全局方差的时窗融合使四块前 32 候选真字召回提高 2.11–6.40 个百分点，mice2 的 OCF 在 session2/4 分别变化 −1.51/+3.87。对照为 v9，mice1 以后加入 v11 的精确 OCF 指派未参与此轮。Kaggle GPU 用时 113 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task2-conditional-precision) |
+| Task 1 开放字库位移复核 | mice2 另留出 320 个不重合的训练字，四个录制各取 128 张配对图。在实际 v11 的固定候选和渲染上加入位移边际似然。原 v11 为 20.4765，两种修正为 20.4895 与 20.5337（+0.013 ± 0.056 与 +0.057 ± 0.062，按字标准误）。较强修正改变 23/512 个首选，逐录制分别 +0.199/−0.078/+0.113/−0.005。每字 4 次试次，正式 Task 1 每字 20 次。Kaggle GPU 用时 517 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-mice2-atlas-shift) |
+
+本轮六项实验均已完成。Task 1 的位移闭集收益在公开字体复核中缩小至 +0.057 OCF。Task 2 和 Task 3 得到新的候选来源，留出 OCF 证据仍不足以更新提交包。保留已核验的 v11，当前正式分数 20.54607，下一个提交窗口为北京时间 2026-11-26 08:00。免费 Colab 未成功分配会话，六项实验分别在 Kaggle CPU 或 T4 完成。 [Kaggle v11 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v11) · [正式提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions)
+
+## 2026-11-25 第十二轮研究
+
+Task 2 保留完整可行的一对一方案，比较把跨天时窗模型提出的字形加入同等大小的边集。Task 3 用内层配对 OCF 学习候选相对 v11 首选的差值，并在相同大小的原候选与混合候选中评估。同期用 5 ms 原始时间窗预测字形，条件在现有 25 ms 放电总数上，单独衡量更精细时间信息。小鼠 V1 的首发放电实验和早期视觉系统的自然刺激研究提供了时间信息的机制依据。 [首发放电实验](https://pmc.ncbi.nlm.nih.gov/articles/PMC5902162/) · [自然视觉时序](https://www.nature.com/articles/nature06105)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 3 候选相对 OCF 的直接学习 | 双鼠八块，每块 64 张配对图。内层按字交叉拟合的重排阈值最终均选择原 v11。固定正差规则在各块选取 6%–27% 新候选，OCF 从 18.72 到 18.44（差值 −0.27，标准误 0.42），比同评分器在等预算原候选上的 18.46 低 0.01（标准误 0.32）。96 张图用参考图选出的同预算 7 候选上限从 30.08 到 34.90（+4.82，标准误 2.28）。仅按融合身份后验重排 v11 原前 7 个候选时，mice1 从 19.38 到 21.12（+1.73，标准误 1.04），mice2 变化 +0.08。Kaggle GPU 用时 219 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-density-ocf-selector) |
+| Task 1 公开字体渲染覆盖 | 在拟合字上分别校准三种字体的几何和风格，用 48 个留出参考图在统一字形距离下查找候选。使用参考图从每种字体的 6 个候选中选最佳的 OCF 为 Noto Sans SC 80.56、SimXiHei 71.26、文泉驿正黑 54.09。每种字体取 2 个后再选最佳为 80.86，较 Noto 单独 +0.30（标准误 0.17），48 张有 5 张改善。所有首选码位均在三种字体的共有支持内。这是字体覆盖诊断，未使用放电。Kaggle CPU 用时 375 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-font-family-coverage) · [SimXiHei](https://github.com/lxgw/SimXiZhi/releases/tag/v1.103) · [文泉驿正黑](https://sourceforge.net/projects/wqy/files/wqy-zenhei/0.9.45%20%28Fighting-state%20RC1%29/) |
+| Task 2 跨天时窗候选与原边集先验 | 两鼠各留出 session2/4，共 512 张配对图。时窗提名提高四个候选池真字覆盖 1.64–3.49 个百分点，但以同一评分器指派后，相对同量 v9 尾部提名的 OCF 差值为 +0.0001（标准误 0.284）。保留原候选，仅加入时窗分数，mice1 相对同折 v11 为 +1.129（标准误 0.492，两个录制分别 +1.046/+1.213）；mice2 相对同一稀疏 OCF 评分器为 +0.093（标准误 0.375）。所有方法都给出 2,748 个唯一匹配。Kaggle GPU 用时 764 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task2-temporal-nominations) |
+| Task 3 给定 25 ms 总数的 5 ms 时序 | 双鼠八块各 512 条独立试次做全字库身份对照，各取 64 条配对 OCF，共 512 张。两鼠在内层都选最大有限平滑强度，外层字形特异模板的条件对数似然低于不区分字形的时序模型。较高权重的真实时序融合相对 v11 变化 +0.464/+0.082 OCF（标准误 0.385/0.415），打乱字形时序的对应变化 +0.152/−0.218，Top-5 在八块均未上升。Kaggle CPU 用时 259 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-conditional-timing) |
+| Task 3 前七名后验独立复核 | mice1 排除早前相关实验的 723 个评分或校准字形，从其他字抽 192 个，四块合计 768 张配对留出图。预先指定沿用 65% v11 与 35% 残差分类分数，在 v11 前 7 个候选中取首选。OCF 从 18.073 到 19.040（+0.967，标准误 0.486），四块变化 +0.288/+2.370/+0.395/+0.814。全字库混合为 18.974（+0.900，标准误 0.510），其中一块下降 0.995。两轮前 7 策略在八块有七块提高，正式候选仅对 mice1 生效。Kaggle GPU 用时 59 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task3-density-top7-recheck) |
+| Task 2 原候选图时窗先验独立复核 | mice1 留出 session1/3，用 192 个互不重叠的评分字，合计 384 张。固定原 v11 图和先验权重时，OCF 从 20.8782 到 20.8704（−0.008，标准误 0.316），两个录制分别 +0.158/−0.173。两种方案均完成 2,748 个一对一匹配，先前的 +1.129 未复现。Kaggle GPU 用时 350 秒，先验不进入提交包。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task2-temporal-prior-recheck) |
+
+### 候选 v12
+
+用全量四次训练重复拟合 mice1 Task 3 的 35% 残差分类融合，仅在 v11 原前七个候选重排。v11 对照重建的 10,992 张预测均与原包逐字节一致。Kaggle GPU 只更新其中 7,422 行，四块分别 1,888/1,843/1,892/1,799 条。已核对 30,200 个官方 ID、顺序、PNG 完整性和 64×64 单通道模式。Kaggle 用时 40 秒，产物 SHA-256 为 `c4b3b9e89719cb9e7db8687be343d8653b54c533f979a1cc00e755315c756039`。选用 v12 作为北京时间 2026-11-26 08:00 开启的下一提交窗口候选。当前正式分数为 20.54607。 [Kaggle v12 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v12-task3) · [正式提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions)
+
+## 2026-11-25 第十三轮研究
+
+Task 1 的正式诊断利用已有的同字试次分组，将每个查询的 20 次重复分为互不重叠的两组。带标签的重复次数对照则从独立留出训练字按已知标签合并多个录制，估计同字跨天对应已知时的闭集识别和 OCF。神经表征的重复性与图像重建品质分别由实测放电和留出参考图检验。 [小鼠 V1 的自然图像解码](https://www.nature.com/articles/s41467-020-14645-x)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 1 字形距离场读出 | mice1 新的外层留出字，session2/4 各 96 张配对图。相同字库和渲染下，方向轮廓加 Poisson 的 CPU 对照为 26.34。加入 25% 距离场分数在无权重和协方差加权时分别为 24.02 和 24.17（差值 −2.32/−2.17，按字标准误 1.19/1.26）。在 16 张图上使用参考图选前 16 候选的最佳 OCF 从 60.60 到 64.31（+3.71，标准误 3.42）。Kaggle CPU 用时 261 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-distance-geometry) |
+| Task 1 正式 20 次重复与实际排名稳定性 | mice1 四个录制，共 1,360 组正式查询，每组做两个固定种子的 10/10 拆分。仅凭放电找回同组的 Top-1 为 66.80%，两半全部候选的平均 Jaccard 为 0.349。v8 首选一致率 29.30%，v11/v12 重排后为 21.80%。完整 20 次选中的字同时出现在两半候选池的比例，从 v8 的 97.24% 到 v11/v12 的 76.25%。两半共有候选的排序相关反而从 0.424 到 0.507。只使用官方分组和放电，指标衡量两半一致性，正式测试参考图未知。Kaggle GPU 用时 349 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-v11-formal-stability) |
+| Task 1 字形特异前向残差校正 | mice1 用 2,044 字拟合 CPU 版 v8、384 个独立训练字拟合放电残差，并留出 320 个字。四块各 64 张配对图，v8 为 24.95，仅校正均值为 23.57（−1.38，标准误 0.81），加入共享字形残差为 23.50（−1.45，标准误 0.82），打乱字形残差为 23.72。四块的闭集身份 Top-1 在字形残差版本中均低于原前向模型。Kaggle CPU 用时 1,152 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-forward-residual) |
+| Task 1 重复数与神经似然权重 | mice1 同一批 96 个留出字，依据已知对应，在四个训练录制中各取 1/2/4 次，合并为 4/8/16 次。逐查询标准化前乘以重复数的结果完全一致。将标准化后的神经似然相对权重提高 40%，配对 OCF 增量为 +1.70/+1.91/+1.72，16 次相对 4 次的额外增量为 +0.018（按字标准误 1.573）。三个重复数的 CPU 基础对照分别为 23.00/27.74/28.35。此轮未使用正式测试或精确重排器。Kaggle CPU 用时 247 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-repeat-weight) |
+| Task 1 固定神经权重独立复核 | 同样的方法，每个重复数用另一批 128 个留出字并保持评分字相同。提高 40% 相对神经权重后的配对差值为 +0.510/+0.247/+1.812，按字标准误 0.926/0.580/1.019。16 次相对 4 次的额外增量 +1.303（标准误 1.385）。两批的 16 次增量约 1.7–1.8，但重复次数与增量的交互证据弱。16 次由已知同字的四个训练录制组成。Kaggle CPU 用时 250 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-repeat-weight-recheck) |
+| Task 1 实测 4/8/16 次的闭集参照 | 两个不重合的 320 字留出组，各鼠在固定 320 张真实候选图内评估。每个查询按已知同字对应，从四个训练录制分别取 1/2/4 次试次。时窗前向匹配在 4/8/16 次的 Top-1 为 mice1 30.0%/43.4%/67.0%、mice2 18.6%/31.25%/40.3%。首选 OCF 约 41.06/53.81/70.96 和 31.96/42.22/49.42。16 次时前 32 名身份召回为 99.4%/93.9%，32 张图用参考图选出的最佳 OCF 约 100.00/93.62。使用跨天已知对应和闭集真实字图库，正式查询未参与。Kaggle GPU 用时 209 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-repeat-ceiling) |
+| Task 1 公开常用字表覆盖 | 用拟合训练图像在全字体库做不带字表偏好的稀疏一对一匹配，以独立公开字体审核置信筛选，接受的 877 个匹配中 844 个码位正确。通用规范汉字表一级在 Noto 有 3,499 个候选，移除与拟合字高置信匹配的 2,081 个码位后保留 1,418 个。320 张新留出训练图中 317 张保留全库最近字形、319 张保留近似字形。309 个高置信匹配中覆盖 308 个。相同大小的词频与形态对照达到相同覆盖，按形态分层打乱的对照只覆盖 149 个高置信匹配。此项只衡量参考图的视觉查找。Kaggle CPU 用时 113 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-repertoire-coverage) · [教育部一级字表](https://www.moe.gov.cn/jyb_xwfb/moe_2082/siju/yywzxxgls/ztzl_yywzgfbz/201306/t20130601_186002.html) · [Unicode 字段](https://www.unicode.org/reports/tr38/#kTGH) |
+| Task 1 常用字表的放电解码复核 | mice1 新留出 320 个字，四块各 128 张配对 OCF。在相同 CPU 轮廓加 Poisson 读出中，通用规范一级去除高置信已见字后有 1,177 个候选，现有词频等规模字库与其重合 1,171 个。全库及未去除已见字的一级字表均为 20.8007。硬限制、软限制及等规模词频残余库各改 4/512 个首选，均为 20.7821（变化 −0.0186，按字标准误 0.0173）。Kaggle CPU 用时 208 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-repertoire-ocf) |
+| Task 1 拆半提名与加深全量候选 | mice1 在独立整字留出中每块评分 128 张，合计 512 张，四次重复分成 2/2。冻结实际 v11 排序器，用完整四次的特征给原候选与新增候选评分。两种扩展各新增 2,047 个候选，逐行预算相同。原 v11 为 31.033，拆半提名为 31.488（+0.456，标准误 0.592），加深全量候选为 31.766（+0.734，标准误 0.569）。加深候选在四块均提高，两种扩展的差为 −0.278（标准误 0.555）。40 张图用参考图选出的最佳候选 OCF 为原池 52.86、拆半 60.90、全量加深 59.65。原池加拆半分歧惩罚时首选变化 −0.137。Kaggle GPU 用时 375 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-half-proposal) |
+
+本轮完成九项实验。两个固定闭集的留出划分都显示，增加实测试次提高了匹配水平。公开字库内，限制为常用字几乎不改变现有首选，扩充原候选池则扩大了参考图挑选时的余量。现有 v11 重排在完整试次加深候选的首轮对照中改善 +0.734 OCF，仍需跨字集验证。候选选用 v12，等待北京时间 2026-11-26 08:00 的提交窗口。 [Kaggle v12 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v12-task3)
+
+## 2026-11-25 第十四轮研究
+
+同一个 Task 1 录制模型在两种候选图上预测时，固定放电试次和日间分数校准。320 个真实留出训练字与公开字体做一对一视觉配对，再给两种候选图加入同样的近形字。全字库另从所有固定公开候选中直接用放电排序。试验使用已知训练字对应汇合四个录制，在同一批字上核对 4/8/16 次实测试次的结果。视觉匹配和重建评估的目标不同，这里用官方 OCF 衡量选中输出的质量。 [视觉皮层重建研究](https://elifesciences.org/articles/105081)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 1 真实图、同字渲染和近形候选 | mice1 320 个新留出字、96 个配对 OCF 字。同一前向模型在 16 次时，320 张真实候选首选为 76.96 OCF。保持该首选，只用匹配的 Noto 渲染输出，得 62.85（−14.11，按字标准误 1.11）。用 Noto 候选图计算放电似然并重新选字时，320 候选为 62.05，增至 1,344/4,416 后分别为 51.41/44.96，完整公开字库为 32.67。全库对应渲染的 Top-1 为 15.63%，320 张真实候选为 70.00%。近形候选按参考图构造，只用于受控诊断。Kaggle CPU 用时 355 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-gallery-gap) |
+| Task 1 加深全量候选独立复核 | mice1 两组互不重叠的留出字，每组 160 字在四个录制使用每字 4 次重复，合计 1,280 张配对 OCF。原 v11 在两组上分别为 31.686 和 30.738，每行多加入 4 个候选后分别为 31.748 和 31.167。合并变化为 +0.245，按字标准误 0.253，八块中五块提高，session1 在两组均下降。使用原拆半预算或仅使用完整放电构造扩展的首选完全一致。Kaggle GPU 用时 646 秒，提交候选沿用 v12。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-deeper-replication) |
+| Task 1 轮廓候选的笔画像素改写 | mice1 整字留出，四个录制各 128 张配对 OCF。固定候选、局部注册和 8% 的像素翻转预算，原候选 OCF 为 24.696，字库改写为 22.122，放电引导改写为 22.491，跨查询打乱放电空间图为 22.447。真实相对打乱的差值为 +0.043，按字标准误 0.078。改写降低原始 OCF。Kaggle CPU 用时 787 秒，含 1,979 个独立精确图对。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-stroke-edits) |
+| Task 1 近形候选的放电率校正 | mice1 四个录制共 512 张配对留出图，固定 v8 轮廓与先验。未校正为 25.162，Poisson 生成式校正为 25.154（−0.008，按字标准误 0.199），OCF 配对训练为 25.317（+0.155，标准误 0.300）。独立校准字的两个放电半组均给出正确偏好的比例分别为 56.60%/57.55%/56.77%。配对校准用了 3,484 个精确图对，选中的图对平均差 38.5 OCF，对极近形字的证据有限。Kaggle GPU 用时 218 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-rendered-pair-rates) |
+
+四项实验均到达 Kaggle 完成状态。受控对照量化了公开字体渲染与近形竞争的各自损失，两项重排和一项像素改写都未提供足以更新提交包的增益。保留已核验的 v12，当前正式 OCF 为 20.54607。下一提交窗口于北京时间 2026-11-26 08:00 开启。 [Kaggle v12 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v12-task3) · [正式提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions)
+
+## 2026-11-26 第十五轮研究
+
+Task 1 在同一批校准字、同样的每字配对数和同一个前向校正器上，比较较窄（4–18 OCF）和较宽（至少 25 OCF）的候选差值。候选来自图像轮廓近邻和冻结的 v8 放电排名。校准使用训练字的参考图，外层留出从完整公开字库仅凭放电提名。窄差值标签打乱是拟合对照。 [难负例学习](https://openaccess.thecvf.com/content_cvpr_2015/html/Schroff_FaceNet_A_Unified_2015_CVPR_paper.html) · [成对排序](https://papers.neurips.cc/paper_files/paper/2006/hash/af44c4c56f385c43f2529f9b1b018f6a-Abstract.html)
+
+Task 3 的细时标同步对照保留每单元 25 ms 计数以及整群体每毫秒的计数，同时按拟合的单元放电时间分布重新随机化单位标签。未入选单元用来估计共同潜伏期。32 个单元对从拟合字确定，在外层 320 个留出字上做 2/2 拆半。 [条件时序扰动](https://pubmed.ncbi.nlm.nih.gov/22031767/) · [小鼠 V1 同步实验](https://pmc.ncbi.nlm.nih.gov/articles/PMC4153809/)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 3 给定计数边际的跨单元同步 | mice1 四录制各 320 个留出字。相对条件随机化，错开试次校正后的同字复现增量为 +0.00935（按字标准误 0.00584），四块为 +0.00289/+0.01078/+0.02036/+0.00336。校正前为 +0.01390（标准误 0.00574）。保边际样本实际改标 88.3%–89.1%，符合条件的交换接受率 97.1%–97.4%。Kaggle CPU 用时 18.3 秒，未使用字图或计算 OCF。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-conditional-synchrony) |
+| Task 3 多尺度时窗计数的条件精度 | mice1 四录制、192 个新留出字，共 768 张配对图。给定父窗总数及 v12 正向均值，在 v12 前七名加固定、字形条件或按均值及父窗计数分层打乱的精度修正。v12 为 18.507，三组为 18.786/18.893/18.934。字形条件相对固定为 +0.107，标准误 0.125，相对打乱为 −0.041，标准误 0.191。已知正确字的条件计数损失相对固定每试次降 0.017–0.019 nats，但全库 Top-32 在四块均低于 v12。Kaggle GPU 用时 49.6 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-allocation-precision) |
+| Task 2 以字形估计目标日放电残差 | mice1 留出 session1/3，各 128 张配对 OCF。目标日四次重复分为 2/2，四折排除被预测查询的两半放电，以匿名软对应拟合字形到目标日模板的修正。固定 v11 候选边及 OCF 排序后，v11 为 20.350，形态条件为 20.121（−0.229，按字标准误 0.365），按墨量和轮廓强度打乱为 20.157（−0.192，标准误 0.166）。三种方案都给出 2,748 个唯一匹配。两次留出的拆半首选一致率为 2.26%/1.46%。形态修正的边效用有 60.5%/25.7% 触及限值，两个录制的完整字库 Top-5 同时下降。Kaggle GPU 用时 357 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task2-morphology-adapter) |
+| Task 2 等试次的同日／跨日匹配 | 两鼠各 2,236 个留出字、两套 2/2 拆分及 12 个有向录制对。固定同一查询、图库大小与测距，仅切换同日或跨日的两试次模板。mice1 Top-32 为 15.122%/11.511%（相差 3.611 个百分点，按字标准误 0.329），用 512 对已知字拟合低秩旋转仅恢复 0.626 个百分点，打乱配对为 −0.220。mice2 同日／跨日为 8.637%/8.646%，已知配对旋转增益 0.186 个百分点。mice2 session4 两试次噪声约为其他天的 3.7 倍。Kaggle CPU 用时 13.0 秒，未计算 OCF，已知字映射只用于衡量可恢复差距。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task2-repeat-day-gap) |
+| Task 1 窄差值和宽差值的成对排序 | 317 个校准字的两组各有 1,856 对，平均 OCF 差分别为 9.96 和 42.98。在 320 个整字留出中抽 128 字，四录制合计 512 张外层配对图。全字库 v8 为 25.432，窄差值训练为 25.336（−0.096，按字标准误 0.539），宽差值为 25.607（+0.176，标准误 0.573），打乱窄差值标签为 23.954（−1.478，标准误 0.483）。窄差值相对宽差值为 −0.272（标准误 0.601），相同 24 候选预算下用参考图选最优比纯加深候选低 2.330（标准误 1.102，24 字）。候选间视觉距离及两端绝对 OCF 可随分组变化。Kaggle GPU 用时 442 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-pair-difficulty) |
+
+五项实验均已完成。目标日已知的低秩对齐只恢复 mice1 等试次同日／跨日差距的约 17%，近形配对和单次放电精度修正的首选 OCF 增益不足以更新提交。v12 仍是已核验的候选；当前 UTC 日名额已用完，下一次可正式提交为北京时间 2026-11-26 08:00。 [Kaggle v12 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v12-task3) · [正式提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions)
+
+## 2026-11-26 第十六轮研究
+
+Task 1 的重复权重在训练字拟合的 64 维白化放电空间内估计。试次与本组其余试次的典型距离超过组内中位距离时，用固定衰减降权，未归一化权重下限为 0.4。组内随机置换权重保留有效试次数。正式 20 次数据只用官方组内对应关系，对两个固定的 10/10 划分做拆半识别。字图 OCF 单独用训练留出字评估，以此检验放电更可复现是否改善了图像。 [稳健位置估计](https://projecteuclid.org/journals/annals-of-mathematical-statistics/volume-35/issue-1/Robust-Estimation-of-a-Location-Parameter/10.1214/aoms/1177703732.full) · [小鼠视皮层群体放电](https://pmc.ncbi.nlm.nih.gov/articles/PMC6948932/)
+
+同轮 Task 1 直接用官方 SpikeDenoiser 做匹配训练对照。两臂在四个录制合并的数据上使用相同原始试次、起始权重和扩散噪声，混合臂从同字同日无放回补齐 1、2 或 4 次重复并取平均。取同一批整字留出的真实放电，固定 64 步采样和 0.5 二值化，同时保留同样输入的全字库检索。现代鼠视觉扩散研究支持探索这一方向，实测对照以本比赛的放电和官方 OCF 为准。 [官方 DDPM](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/data) · [Sensorium-Viz](https://github.com/GuanLab/sensorium-viz)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 3 固定字形混合的图像重建 | 官方训练图库中构造 28 个近形双峰或三峰、8 个远形双峰和 8 个单峰。每个近形组合提名 2–10 项真实差分笔画，编辑总预算为原墨量 8%。可微轮廓代理驱动的贪心在 28 个近形组合中均保留硬代表字，精确混合期望 OCF 为 72.325，IoU 0.776。像素投票及旧稀疏共识的 OCF 差分别为 −5.163 和 −1.026（标准误 1.315/0.443）。8 个单峰均得 100。此对照只支持判断当前小预算代理贪心，混合权重由实验预设。Kaggle CPU 用时 177 秒，共 793 个精确图对。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-preimage-geometry) |
+| Task 1 对异常重复降权 | 正式数据的 10/10 拆半中，mice1/mice2 的余弦同组首选率由 56.76%/27.68% 到 57.21%/28.24%，打乱同一组权重为 56.65%/27.72%。高斯打分的首选分别变化 +0.29/−0.33 个百分点，仍使用等权 10 次的噪声标尺，两组拆分复用原始试次。训练留出每字 4 次共 448 张图，组内有效次数约 3.98，开放字库的 OCF 由 24.669 到 24.369（−0.300，按字标准误 0.225），打乱为 24.676。已知同字的四日 16 次融合在 112 张图上为 29.31/30.16/30.31。正式诊断衡量组内放电再识别。Kaggle CPU 用时 284 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-robust-repeats) |
+| Task 1 二值字形的局部字体校正 | 使用 768 个高置信自动配对训练约 2,400 参数的共享边缘模型，固定原有全局渲染。代理目标从 0.42345 降到 0.41507，二值化后的 128 个冻结视觉近邻及 384 张冻结放电首选均没有像素变化，OCF 分别保持 80.659 和 22.823。结果覆盖当前阈值，未比较真正发生编辑时的改动质量。Kaggle CPU 用时 351 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-local-font-style) · [局部风格生成](https://github.com/clovaai/lffont) |
+| Task 1 局部字体校正的小预算复核 | 64 个独立校准字，强制修改原墨量 0.5%/1%/2% 的边缘像素，平均改 3.55/7.56/15.56 像素。原渲染为 80.233，三种编辑相对原渲染变化为 −0.175/−0.340/−1.369 OCF（按字标准误 0.120/0.151/0.233）。相对同增删数的形态控制则分别为 +0.581/+1.440/+1.952。校准选零编辑，冻结放电首选的复核未执行。Kaggle CPU 用时 193 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-local-font-small-edits) |
+| Task 3 跨录制实测度量 | mice1 四录制各 192 张留出单试次。度量拟合排除目标录制与评分字，跨日和同日使用同一结构、负例数与相同实测支持库。固定 v12 前七名融合 25% 时，原 v12 为 18.463，冻结／同日／跨日的变化为 −0.049/+0.004/+0.116 OCF（按字标准误 0.286/0.278/0.284）。跨日相对同日变化 +0.112±0.177，独立内层选择 15% 的跨日版本在外层变化 −0.084±0.261。跨日融合的全库前 32 名在四块均上升，冻结融合在四块均更高。Kaggle GPU 用时 120 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-measured-metric) |
+| Task 1 跨录制共享字集与列背景校正 | mice1 四个录制，384 个独立背景字、320 个整字留出。每个目标只用其他三块，分别筛选固定 320 列，在相同 v11 候选边上加分。640 张配对图，v11 为 27.188，逐字形背景校正为 27.173（−0.014±0.011），全库共享背景为 26.970，分层打乱为 27.134，公开先验为 27.200。事后用真实训练图求字库匹配代理，校正、原始、打乱、公开先验的支持召回为 2.03%/3.36%/1.25%/20.23%。近似字库代理和每字 4 次重复限制对正式 20 次的外推。Kaggle GPU 用时 342 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-shared-support) |
+| Task 1 官方 DDPM 的重复数匹配训练 | mice1 正式模型架构，四录制各 96 张整字留出图，两个训练臂均完成 3,200 次更新。给定 4 次重复，单试次训练和混合 1/2/4 次训练的二值 OCF 为 11.018/11.034（+0.015±0.062），灰度为 11.356/11.269。共用放电的全 Noto 检索在 1/4 次时为 19.610/23.998。每录制 24 字的 4 次混合臂真实／打乱条件为 10.948/10.426（差 +0.522±0.196）。T4 训练 242 秒，全实验 387 秒。训练轮数和同日 20 次的局限仍在，这次比较支持在已测范围内保留字库检索。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-official-ddpm-repeat) |
+
+七项 Kaggle 实验均已完成。用实测放电辅助缩小字库、跨录制度量、局部字体校正和短训 DDPM 均未提供足够 OCF 增益来更新 v12。当前正式分数为 20.54607，下一次可正式提交为北京时间 2026-11-26 08:00。 [Kaggle v12 候选](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v12-task3) · [正式提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions)
+
+## 2026-11-26 第十七轮研究
+
+Task 2 将潜在字形身份和输出图像的选择放在同一份放电评分上比较。按查询归一化的后验与整块均衡的后验共用温度，后者根据每个真实字在录制中只出现一次的设计作校正。固定 v11 的候选边，在原来的分数上分别加入身份概率和预期方向轮廓相似度，并核对输出保留或放开一对一约束的效果。 [Sinkhorn](https://proceedings.neurips.cc/paper/2013/hash/af21d0c97db2e27e13572cbf59eb343d-Abstract.html) · [结构化决策的期望损失](https://www.jmlr.org/beta/papers/v21/20-097.html)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 1 冻结编码器的局部逆向形变 | mice1 四录制各 128 个新留出字。前两次放电选字并优化局部平滑流，后两次核验，再反向交换。真实放电优化相对原图与打乱分别提高独立似然 0.324±0.049 和 0.384±0.065 nats/试次。使用全部四次的同一 v11 首选测 512 张配对 OCF，原图 29.995、真实形变 28.294（−1.701±0.139）、打乱 28.020。真实峰值位移 1.028 像素、绝对墨量改 0.867%，二值轮廓平均改 122 像素。Kaggle GPU 用时 414 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-inverse-warp) · [输入优化研究](https://elifesciences.org/articles/105081) |
+| Task 1 公开字形锚定的残差 DDPM | mice1 四录制各 96 张整字留出图。训练残差限制在原边缘 3 像素及原墨量 12% 内，内层放电首选与真图平均相差 831 像素，这一约束平均保留 96.9 个训练编辑。外层冻结同一个开放字库首选。原锚 OCF 为 22.222，只看字形、同日打乱放电与真实放电为 19.188/19.196/19.202。真实相对原图 −3.020±0.340，相对打乱 +0.005±0.024。384 张真实条件均编辑，平均 85.64 像素，21 张在截断前超预算，无空图。Kaggle T4 完成 6,400 更新，用时 372 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-anchored-ddpm) · [残差扩散研究](https://arxiv.org/abs/2308.13712) |
+| Task 1 局部形变只用于排序 | mice1 另一组 320 个整字留出，四录制 512 张配对图。每行固定 v11 的八个候选，双向拆半拟合和评估形变，使用给定群体计数的空间似然，二值字形保持同一墨量，输出使用原图。v11 为 32.567，真实形变重排 32.291（−0.276±0.280），打乱 32.210。真实相对打乱 +0.081±0.271。形变相对零位移提高所有候选的独立似然 0.466±0.048 nats/试次，原首选只提高 0.139±0.050。候选提名使用全部四次，形变增量才使用拆半。Kaggle GPU 用时 400 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-warp-scoring) |
+| Task 3 多重复教师的形态邻域蒸馏 | mice1 四录制，共 768 张配对真实单试次图。源训练的单试次学生、四重复教师和候选模板使用互斥放电，学生拟合排除目标录制。原 v12 为 18.401，固定前七内硬标签、纯形态软标签、放电调整的软标签分别为 18.187/18.288/18.304。多重复教师相对纯形态 +0.016±0.024，相对 v12 −0.097±0.305。25 选 1 的源诊断中四重复为 69.2%–71.4%，同模板单次为 42.0%–44.2%。前两版的单试次轴引起广播和内存错误，第三版修复并完成全部四日，Kaggle T4 用时 174 秒。 [Kaggle v3](https://www.kaggle.com/code/ccjjllt/siclink-task3-distilled-teacher) · [知识蒸馏](https://arxiv.org/abs/1503.02531) |
+| Task 2 均衡身份后验与轮廓效用指派 | mice1 两个完整留出录制，使用相同的 v11 边与 128 个评分字。整块均衡使全库 Top-32 从 53.35%/56.73% 提高到 54.66%/59.10%，身份负对数损失也下降。256 张图上，v11 为 34.757，按行轮廓期望、均衡身份、均衡轮廓期望分别为 33.076/34.536/33.517。均衡轮廓相对 v11 为 −1.241±0.922，相对按行轮廓为 +0.441±0.634。取消输出一对一后，固定 v11 分数降至 30.345。Kaggle CPU 用时 3,429 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task2-posterior-assignment) |
+
+五项研究对照均取得完整结果。形变改善放电似然，均衡后验改善真字召回，蒸馏教师在源录制可靠识别真字，这些信号均未在本轮转为稳定的选图 OCF 增益。保留 v12，当前正式分数为 20.54607。北京时间 2026-11-26 08:00 为下一次可提交时间。 [Kaggle v12](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v12-task3) · [正式提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions)
+
+## 2026-11-26 第十八轮研究
+
+Task 2 将两只鼠的目标录制分别打乱，使用其他已标注天的同字训练共享响应坐标。由放电推断两鼠查询行的软对应，将 mice1 的独立字库证据传给 mice2，再保持一对一输出。同行打乱是配对对照，已知对应的上限只通过训练留出标签诊断。跨神经群体的共享响应空间提供这一建模思路，模型准确度由本赛题留出的录制检验。 [多视图表示学习](https://arxiv.org/abs/1702.02519) · [视觉刺激的神经群体表征](https://pmc.ncbi.nlm.nih.gov/articles/PMC10823231/)
+
+Task 1 用同一组正式策略候选核对精确 OCF 校准字的规模，比较原 96 字头、互不重叠的新 96 字以及嵌套的 192/384 字。Task 3 在固定的 v12 前七候选内学习整行选择，将候选的期望 OCF 按潜在参考后验名次分组。两项都以未参与拟合的图像配对效果为主要依据。 [结构化决策的期望损失](https://www.jmlr.org/beta/papers/v21/20-097.html)
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 2 给定放电计数边际的试次聚集 | mice1 留出 session2/4，每块全库 2,748 字。给定单元窗计数和群体逐试次计数后，真实聚集残差相对近计数错配和固定边际随机化使合并身份 NLL 各低约 0.023，Top-32 高 0.855/0.946 个百分点。相对原 v9，合并 NLL 增加 0.00787±0.00381 nats，Top-32 下降 1.328±0.351 个百分点。未进一步测 OCF。首版修复单元点积广播后，第 2 版 Kaggle CPU 用时 69 秒。 [Kaggle v2](https://www.kaggle.com/code/ccjjllt/siclink-task2-repeat-collision) · [试次放电变异研究](https://journals.physiology.org/doi/full/10.1152/jn.00382.2025) |
+| Task 3 后验分秩与精确 OCF 选择 | mice1 四录制共 768 张配对真实单次图。用 13,814 个图库精确图对拟合匹配效用，890 个独立图对核验，再用 6,709 个真实单试次候选图对校准。在同一 v12 前七名内，v12 为 18.770，单温度效用为 18.887，固定 20% 的分秩效用为 19.106（+0.336±0.268），逐录制 +0.306/+0.826/−0.388/+0.601。学习分秩选择为 18.859（+0.090±0.291），相对同模型用轮廓代理为 +0.238±0.107。真图从当前七个候选选优为 28.925，四块有 45%–61% 的真实字排在第 129 名及之后。Kaggle GPU 用时 650 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-rankband-ocf) |
+| Task 2 跨鼠软对应与一对一选字 | 两鼠独立留出 session1/3，目标为 mice2。正式策略 v9 在 320 张配对图上为 20.866，放电推断跨鼠对应后为 20.799（−0.067±0.662），打乱为 17.418。真实软对应相对打乱为 +3.381±1.226。使用留出标签指定正确跨鼠对应的诊断为 23.728（+2.862±1.069），可用软对应的身份首选只有 0.44%/0.47%，虽然后者使正式字库 Top-32 在两块提高 3.75/4.84 个百分点。Kaggle CPU 用时 542 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task2-peer-mouse) |
+| Task 1 精确 OCF 排序的标注规模 | mice1 四录制 768 张新留出配对图，全部输出在同一开放字库候选图上选取。匹配编码折及 640 次更新时，新 96/192/384 字的 OCF 为 31.507/32.159/32.738，384 相对匹配的 96 为 +1.231±0.491。完整原 v11 为 32.344，384 相对原 v11 为 +0.394±0.578，逐录制 −1.446/+1.258/−0.073/+1.836，去除 session4 后平均 −0.087。共享校准 480 字、四录制，共 29,720 个去重后的官方精确图对。Kaggle T4 用时 1,054 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-metric-scale) |
+
+四项对照均完成。扩大精确 OCF 标注在匹配实验内提高了排序，完整原 v11 对照的平均优势偏小且随录制变化。Task 2 跨鼠证据和 Task 3 分秩效用尚不足以更新候选。保留 v12，正式分数为 20.54607。北京时间 2026-11-26 08:00 开启下一次提交名额。 [Kaggle v12](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v12-task3) · [提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions)
+
+## 2026-11-26 第十九轮研究
+
+Task 1 的交叉拟合校准分四折收集每折 96 字的精确图对，各折保留原 v11 的前向训练字数与同一噪声校准。另用训练中已知同字的四录制独立证据，拟合两种固定神经权重的 OCF 差，比较只使用重复数、加入半组一致性及打乱一致性的选图。开放字库的正式 20 次输入未参与这两个对照。
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 3 固定分秩效用的独立复核 | mice1 四录制共 1,024 张新的真实单次配对图，评分字与上轮互斥，新旧内外留出试次逐字核对无重合。保留 v12 前七候选和固定 20% 权重。v12 为 18.639，分秩为 18.894（+0.255±0.210），同权重单温度效用为 18.946（+0.306±0.212），分秩相对单温度 −0.052±0.045。两次分秩共 448 个评分字、1,792 张配对图，按字加权约 +0.290，合并标准误约 0.166，录制仍是同四天。Kaggle T4 用时 364 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task3-rankband-recheck) |
+| Task 2 跨鼠提名的等候选预算复核 | mice2 新留出 session2/4，各 160 张配对图。每行保留原 v9 解的边并给四个新槽。完整 v9 为 19.099，同预算本鼠深挖为 17.942，真实跨鼠提名为 19.585（相对 v9 +0.486±0.480），分层打乱为 19.920。真实相对打乱 −0.334±0.748。稀疏裸目标与原 v9 两天逐行完全一致，所有方案均 2,748 个唯一输出。困难负例过采样后，校准只保留了字库重叠项，原始 GCCA 特征系数为零，结果仅覆盖本次组合。Kaggle CPU 用时 332 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task2-peer-nomination) |
+| Task 1 跨录制一致性与重复数组合 | mice1 用 144 字拟合选择，另 144 个新字做配对 OCF。保持字库、图像和权重备选固定，Poisson 信号乘 1.4 在合并 4/8/16 次实测重复时分别使 OCF 变化 −0.448±0.774、+2.527±1.021、+3.401±1.144。在 8 和 16 次时，按重复数、真实一致性及打乱一致性均逐行选择较高权重。16 次的原方案为 31.588，较高权重为 34.990，参考图从两者选优为 35.092。此为已知同字的四天合并，不等同正式单日 20 次。Kaggle CPU 用时 407 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-repeat-agreement) |
+| Task 1 四折精确 OCF 校准复核 | mice1 另一组 320 字，四录制共 768 张配对图。每折用 1,948 字拟合前向读出，保留同一 384 字噪声校准，四个不重叠的 96 字折训练校准头，同为 640 次更新。共享同一外层候选、渲染与锚权重 4 时，原 v11 28.896，四折 30.684（+1.788±0.661）。相对另一预指定单折 +2.033±0.622。逐录制增益 +3.369/+0.550/+1.275/+1.957。共有 23,117 个去重后精确图对。四次放电留出验证未使用正式输入。Kaggle GPU 用时 896 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-crossfit-metric-scale) |
+| Task 1 较高 Poisson 权重迁移到 v11 | 复用 CPU 试验同一批 144 字和重复，冻结原精确排序。单日 4 次、576 张配对图的 v11 为 33.207，固定候选与同预算重提名的变化为 +0.389±0.442 和 +0.623±0.504。跨日已知同字的 16 次代理在 144 张图上为 47.584，固定和同预算重提名提高 +1.202±1.047、+1.629±1.147，只重提名变化 −0.024±0.024。16 次和四次的重提名增益差为 +1.005±1.212。此为同字模型迁移，未采用到 v13。Kaggle GPU 用时 337 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-v11-repeat-weight-transfer) |
+
+### v13 提交候选
+
+用全量 2,748 个训练字构造四折 OCF 排序头，并以 v12 为来源计算 mice1 的正式 Task 1。v13 首包的 30,200 个预测完整，非目标行 28,840 条均与 v12 逐字节一致。384 条变化中有 54 条的旧输出未能从重跑的旧策略逐像素复现，因此首包只保留作研究对照。首次重跑在评分前已有 7,858 条校准候选边，旧版有 7,855 条。第二版直接调用旧校准函数并保持其精确评分顺序，只应用到已复现旧像素且改变首选的查询。 [Kaggle 生成记录](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v13-task1-crossfit)
+
+第二版在 Kaggle T4 用时 1,162 秒。旧策略的 PNG 逐字节复现 1,259/1,360 条，未复现的 101 条全部继承 v12，包含原本建议改变的 62 条。更新 371 条 mice1 Task 1，四块分别 88/84/101/98 条。剩余 29,829 条完全一致，30,200 个官方 ID 顺序、ZIP CRC、64×64 单通道 PNG 及更新 ID 清单均已复查。第二版 SHA-256 为 `f478a5c0e1a68b1c0dfd5e016432861ada3b0f2c1433d0a6fb3b0e761e8ce540`，作为下一次提交候选。北京时间 2026-11-26 08:00 前正式名额仍未开放，官方分数为 20.54607。 [Kaggle v13 第二版](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v13-task1-crossfit?scriptVersionId=2) · [正式提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions)
+
+## 2026-11-26 第二十轮研究
+
+Task 1 在新整字留出上检验两个问题。mice1 将 384 字交叉拟合扩大到 768 字，冻结校准头更新次数、外层候选图、渲染与分数锚定。mice2 在同一批外层字上比较现代候选池中的单折和四折，并与当前包逐录制采用的实际策略作配对。
+
+Task 2 在 mice2 的两个完整录制上，从冻结的 v9 后验出发，用其他查询的软字形对应更新一对一指派。分别用来源和目标的真实拆半放电估计相似关系，去掉自连接。按墨量和放电响应幅度分层打乱图库对应，并保留只用于诊断的真实邻居对应。这里借鉴融合 Gromov–Wasserstein 中同时利用单点分数和成对关系的思想，只使用一次固定权重更新。 [结构化最优传输](https://proceedings.mlr.press/v97/titouan19a.html) · [交叉验证表征几何](https://elifesciences.org/articles/82566)
+
+Task 3 在新留出字上保留 v12 的七个候选，分别用固定九个空位比较 v11 加深、v12 残差排名和精确轮廓效用的边际覆盖。排序直接使用冻结 v12 分数或同一个固定权重的单温度效用。另对预先指定的子集使用参考图，从每个固定候选池选出 OCF 最高图，衡量扩充候选增加的余量。
+
+| Kaggle 对照 | 结果 |
+| --- | --- |
+| Task 2 软对应传播跨天放电几何 | mice2 留出 session1/3，384 张配对 OCF，192 个独立字。v9 为 21.218，真实几何为 21.770（+0.552±0.565），逐录制 −0.089/+1.192。分层打乱为 21.418，真实相对打乱 +0.352±0.505。以真实邻居对应替代软对应时为 21.502。所有方法在每块输出 2,748 个唯一字形。Kaggle CPU 用时 393 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task2-relational-geometry) |
+| Task 3 残差候选与精确效用的边际覆盖 | mice1 四录制共 768 张新留出单试次图。冻结 v12 排序时，原七候选为 18.933。加深 v11 得 19.106，同残差库按 v12、单候选期望效用及边际覆盖提名分别为 19.220、19.643、19.509。单候选效用相对原七为 +0.710±0.352。320 张用真图选优的同库 v12／边际上限为 38.512／38.550，差 +0.038±0.809。边际覆盖相对同库 v12 的实际选图增益 +0.289±0.155，共用 20% 效用二级分数后为 +0.052±0.060。Kaggle T4 用时 656 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task3-utility-coverage) |
+| Task 2 逐单元跨日稳定时序成分 | mice2 留出 session2/4，320 张配对图。沿用早期跨日白化方法，每单元只保留一个轴并以固定 10% 权重与 v9 融合。v9 为 20.961，按每次试次整窗计数去率后为 20.695（−0.265±0.822）。同结构保留计数时为 22.185（+1.224±0.784），两录制分别 +1.985/+0.463，Top-32 各增 1.20/0.69 个百分点。首版修复了基线的梯度作用域，第二版 Kaggle CPU 用时 414 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task2-temporal-components?scriptVersionId=2) · [跨天时序编码研究](https://pmc.ncbi.nlm.nih.gov/articles/PMC12322180/) |
+| Task 1 四折与八折同预算校准 | mice1 四录制各 320 个新整字，共 1,280 张配对图。原单折 32.715，四折 33.536（+0.821±0.379），八折 33.128（相对四折 −0.408±0.285）。八折相对四折的逐录制变化为 −0.882/−0.970/+0.537/−0.318，删除任一录制后的合并估计仍为负。八折 47,301 个去重精确校准图对，前四折、候选、渲染及 640 次更新与四折一致。Kaggle T4 用时 1,582 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-eight-fold-metric-scale) |
+| Task 2 保留计数时序成分的独立复核 | mice2 改留 session1/3，各 256 张新图。原 v9 为 20.776，保留计数的一轴为 20.743（−0.033±0.405），逐日 +0.068/−0.135。Top-32 分别提高 1.71/2.04 个百分点，身份 NLL 降低 0.0529/0.0872 nats。两轮合计 832 张图，按 416 个评分字加权的 OCF 变化为 +0.450±0.392。此轮未测匹配结构的仅总计数参照。Kaggle CPU 用时 628 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task2-temporal-components-recheck) |
+| Task 1 mice2 四折与现有逐录制策略 | 320 个独立留出字、四录制、1,280 张配对图。现行方案 session1 用现代单折，session2–4 用旧 v6。现行 23.151，现代四折 24.754（+1.603±0.437），逐录制 +1.362/+2.910/+1.384/+0.756。保持现代模型、候选、渲染及锚定一致，四折相对现代单折 +0.681±0.391。只看旧 v6 的三块，四折相对现行 +1.683±0.555。Kaggle T4 用时 1,292 秒。各图使用四次真实重复，正式输入每组有 20 次。 [Kaggle 对照](https://www.kaggle.com/code/ccjjllt/siclink-task1-mice2-incumbent-crossfit) |
+| Task 3 单候选精确效用提名复核 | mice1 四录制、320 个未做过 OCF 评分的字、1,280 个新外层单试次。冻结 v12 选图，原七候选 18.559、同一残差库按 v12 排序补九个为 18.621、按候选期望效用补九个为 18.572。两种等预算扩池差 −0.050±0.153，期望效用提名较原七 +0.013±0.170，前轮实际增益未复现。192 张用真图选优为 27.971/33.476/33.862。新外层试次与前三轮评分试次互斥，其中 649 个曾仅参与早轮温度校准。Kaggle T4 用时 437 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task3-utility-nomination-recheck) |
+| Task 2 一对一指派的差分循环 | mice2 session1/3 的固定 v9 与 10% 保计数时序指派差完全复现 588/654 条，均有 2,748 个不同输出。变化只分解成 7/9 个循环，最大循环各包含 342/562 条（58.2%/85.9%），按循环长度的有效个数为 2.36/1.34。同长度随机选择只能改变少量小环，无法构造有代表性的等规模对照。此次测量止于结构，未计算 OCF。Kaggle CPU 用时 170 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task2-temporal-cycles) |
+| Task 1 在 v13 四折上复核较高 Poisson 权重 | mice1 另 320 个整字，冻结生产四折结构、渲染和锚。等预算重提名并将 Poisson 权重乘 1.4 时，单日四次相对 32.629 提高 +0.464±0.240，四日各取一次相对 31.608 提高 +0.768±0.268，四日合并 16 次相对 50.845 提高 +1.364±0.513。16 次只重提名为 +1.025±0.451，固定候选为 +0.339±0.249。保持同样四日覆盖时，16 减四次的额外增益为 +0.595±0.578。代理依赖已知跨日同字，未使用正式同日 20 次。Kaggle T4 用时 1,118 秒。 [Kaggle 复核](https://www.kaggle.com/code/ccjjllt/siclink-task1-v13-repeat-weight-recheck) |
+| Task 1 独立拆半放电与选图 OCF | mice1 320 个新整字在四个录制双向做 2/2 拆半，固定同预算 v13 与 1.4× 权重。2,560 个选择中改变 233 个、涉及 171 个字。独立感受野的真图正控相对轮廓近邻为 +5.935±0.323 nats/试次。按相近计数错配扣除背景后，独立放电差与 OCF 差的符号一致率为 53.07%±3.50 个百分点。全样本 OCF 变化 +0.056±0.104。拆半指标未提供足够证据用于选包。Kaggle T4 用时 1,158 秒。 [Kaggle 实验](https://www.kaggle.com/code/ccjjllt/siclink-task1-poisson-bridge) |
+
+### v14 提交候选
+
+用全部 2,748 个训练字对 mice2 的四个录制拟合四折排序器，正式推理使用每组 20 次实测放电。从 v13 第二版出发，重新生成旧策略后逐像素复现 1,153/1,360 条。无法复现的 207 条保留原图，其中 129 条本来会更换首选。实际更新 637 条 mice2 Task 1，逐录制 158/171/152/156 条。其余 29,563 条逐字节一致。全部 30,200 条的官方顺序、ZIP CRC、64×64 单通道 PNG 与更新清单均核对。Kaggle T4 用时 1,241 秒。选用 SHA-256 为 `1da6c1c7f6ba4c2dbf388921569baf9fb061a55ff78a822e4823079e5570c1c6` 的包，保留 v13 的 mice1 四折输出。 [Kaggle v14](https://www.kaggle.com/code/ccjjllt/siclink-candidate-v14-mice2-crossfit)
+
+2026-11-26 08:49（北京时间）以 `ccjjllt` 提交 v14，编号 `58918204`。09:06 核对评分完成，公开 OCF 为 **25.45723**，较上一正式提交 20.54607 增加 **4.91116**，较第一份提交 15.04410 增加 **10.41313**。公开榜当时 76 支队伍，`ccjjllt` 位列第 35。增量覆盖 v2 到 v14 的多项更新，Kaggle 没有提供本次各任务的单独分数。当前 UTC 日已用一次提交，下一次窗口为北京时间 2026-11-27 08:00。 [正式提交记录](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/submissions) · [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard)
