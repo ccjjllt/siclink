@@ -83,6 +83,48 @@ def _row_features(matrix, chosen, valid, top_score, top_index):
     return (values, margin, reciprocal, leader_gap.expand_as(values), present.float()), rank
 
 
+def _atlas_listings(scores, depth, atlas_size):
+    listings = {}
+    for name, matrix in scores.items():
+        matrix = matrix.float()
+        values, indexes = matrix.masked_fill(~torch.isfinite(matrix), -torch.inf).topk(depth, dim=1)
+        listings[name] = (values, indexes.masked_fill(~torch.isfinite(values), atlas_size))
+    return listings
+
+
+def _describe_candidates(scores, nominated_sources, baseline, listings, indices, valid, atlas_size, depth):
+    columns, names, agreeing_ranks = [], [], []
+    for name in sorted(scores):
+        components, ranks = _row_features(scores[name].float(), indices, valid, *listings[name])
+        columns.extend(components)
+        names.extend(f"{name}.{feature}" for feature in ("z", "distance_to_first", "reciprocal_rank",
+                                                        "leader_margin", "has_value"))
+        if name in nominated_sources:
+            agreeing_ranks.append(ranks)
+        if name == baseline:
+            baseline_z = components[0]
+    ranks = torch.stack(agreeing_ranks)
+    columns.extend(((ranks == 1).float().mean(dim=0), (ranks <= min(5, depth)).float().mean(dim=0),
+                    (ranks <= depth).float().mean(dim=0)))
+    names.extend(("agreement.first", "agreement.top_five", "agreement.ranked"))
+    features = torch.stack(columns, dim=-1).masked_fill(~valid[:, :, None], 0)
+    return AtlasCandidates(indices, valid, features, baseline_z, tuple(names), atlas_size, depth, baseline)
+
+
+@torch.no_grad()
+def describe_atlas_candidates(scores, nominated_sources, baseline, rank_depth, indices, valid):
+    """Describe supplied proposals using the same complete-gallery feature schema."""
+    if not nominated_sources or baseline not in scores or any(name not in scores for name in nominated_sources):
+        raise ValueError("Provide the original ranking sources and complete-gallery anchor.")
+    first = scores[baseline]
+    if (indices.ndim != 2 or indices.shape != valid.shape or indices.shape[0] != first.shape[0]
+            or not 1 <= rank_depth <= first.shape[1]):
+        raise ValueError("Provide matching proposal indices, validity and original rank depth.")
+    atlas_size = first.shape[1]
+    return _describe_candidates(scores, nominated_sources, baseline, _atlas_listings(scores, rank_depth, atlas_size),
+                                indices, valid, atlas_size, rank_depth)
+
+
 @torch.no_grad()
 def pack_atlas_candidates(
     scores: Mapping[str, torch.Tensor],
@@ -110,30 +152,10 @@ def pack_atlas_candidates(
     if max(nominate.values()) > atlas_size:
         raise ValueError("A top-k quota cannot exceed the atlas width.")
     depth = min(atlas_size, max(rank_depth, *nominate.values()))
-    listings = {}
-    for name, matrix in scores.items():
-        matrix = matrix.float()
-        values, indexes = matrix.masked_fill(~torch.isfinite(matrix), -torch.inf).topk(depth, dim=1)
-        listings[name] = (values, indexes.masked_fill(~torch.isfinite(values), atlas_size))
+    listings = _atlas_listings(scores, depth, atlas_size)
     nominations = torch.cat([listings[name][1][:, :count] for name, count in nominate.items()], dim=1)
     indices, valid = _deduplicate(nominations, atlas_size)
-
-    columns, names, agreeing_ranks = [], [], []
-    for name in sorted(scores):
-        components, ranks = _row_features(scores[name].float(), indices, valid, *listings[name])
-        columns.extend(components)
-        names.extend(f"{name}.{feature}" for feature in ("z", "distance_to_first", "reciprocal_rank",
-                                                        "leader_margin", "has_value"))
-        if name in nominate:
-            agreeing_ranks.append(ranks)
-        if name == baseline:
-            baseline_z = components[0]
-    ranks = torch.stack(agreeing_ranks)
-    columns.extend(((ranks == 1).float().mean(dim=0), (ranks <= min(5, depth)).float().mean(dim=0),
-                    (ranks <= depth).float().mean(dim=0)))
-    names.extend(("agreement.first", "agreement.top_five", "agreement.ranked"))
-    features = torch.stack(columns, dim=-1).masked_fill(~valid[:, :, None], 0)
-    return AtlasCandidates(indices, valid, features, baseline_z, tuple(names), atlas_size, depth, baseline)
+    return _describe_candidates(scores, nominate, baseline, listings, indices, valid, atlas_size, depth)
 
 
 class _ExpectedOCF(nn.Module):
@@ -189,6 +211,7 @@ def fit_atlas_metric_ranker(
     learning_rate: float = 0.003,
     weight_decay: float = 0.03,
     ranking_weight: float = 0.055,
+    rows_per_epoch: int | None = None,
 ) -> AtlasMetricRanker:
     """Train on cross-fitted candidate scores and their exact 0–100 OCF labels.
 
@@ -207,6 +230,8 @@ def fit_atlas_metric_ranker(
     rows = valid.any(dim=1).nonzero()[:, 0]
     if not len(rows):
         raise ValueError("At least one query must have a finite OCF label for a valid candidate.")
+    if rows_per_epoch is not None and not 1 <= rows_per_epoch <= len(rows):
+        raise ValueError("Choose an epoch row budget no larger than the labeled query set.")
     valid = valid[rows]
     targets = (targets[rows].masked_fill(~valid, 0) / 100).clamp(0, 1)
     features = features[rows]
@@ -237,6 +262,8 @@ def fit_atlas_metric_ranker(
     recent_loss = None
     for _ in range(epochs):
         order = torch.randperm(len(rows), device=device, generator=rng)
+        if rows_per_epoch is not None:
+            order = order[:rows_per_epoch]
         recent_loss = features.new_zeros(())
         for row_batch in order.split(batch_rows):
             prediction = model(features[row_batch])
@@ -253,5 +280,5 @@ def fit_atlas_metric_ranker(
         scheduler.step()
     diagnostics = {"train_queries": len(rows), "labeled_candidates": int(valid.sum()), "epochs": epochs,
                    "seed": seed, "mean_target_ocf": float(100 * mean_target),
-                   "final_training_loss": float(recent_loss / len(rows))}
+                   "final_training_loss": float(recent_loss / len(order))}
     return AtlasMetricRanker(model.eval(), mean, scale, _schema(candidates), diagnostics)

@@ -128,13 +128,18 @@ def _agreement(estimate, model):
 
 
 @torch.inference_mode()
-def contour_retrieval_scores(model, query, session):
+def contour_retrieval_scores(model, query, session, *, repeat_weights=None):
     """Score each hard gallery glyph by expected contour agreement with the query."""
     features = _response_features(query, model.view, model.n_bins)
     stats = model.moments.get(session)
     if stats is None:
         stats = _moments(features)
-    features = _standardize(features, *stats).mean(dim=1) @ model.projection
+    features = _standardize(features, *stats)
+    if repeat_weights is None:
+        features = features.mean(dim=1)
+    else:
+        features = (features * repeat_weights[..., None]).sum(dim=1)
+    features = features @ model.projection
     estimate = model.readout.predict(features)
     if session in model.local:
         estimate = 0.80 * estimate + 0.20 * model.local[session].predict(features)
