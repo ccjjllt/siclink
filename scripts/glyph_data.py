@@ -42,7 +42,7 @@ def load_images(root, device):
         return torch.as_tensor(stored["images"], device=device)
 
 
-def read_trials(root, catalog, entry, device, *, bin_ms=BIN_MS):
+def read_trials(root, catalog, entry, device, *, bin_ms=BIN_MS, load_labels=True):
     """Return raw count features of shape (samples, repeats, units × bins)."""
     bins, excess = divmod(catalog["window_ms"], bin_ms)
     samples_per_bin, fractional = divmod(catalog["sample_rate_hz"] * bin_ms, 1000)
@@ -53,7 +53,7 @@ def read_trials(root, catalog, entry, device, *, bin_ms=BIN_MS):
         ids = raw["sample_ids"]
         group_ptr = raw["group_ptr"]
         trial_ptr = raw["trial_ptr"]
-        labels = raw["target"] if "target" in raw else None
+        labels = raw["target"] if load_labels and "target" in raw else None
         trial_sizes = np.diff(trial_ptr)
         trial_ids = np.repeat(np.arange(len(trial_sizes)), trial_sizes)
         time_bins = raw["spike_samples"] // samples_per_bin

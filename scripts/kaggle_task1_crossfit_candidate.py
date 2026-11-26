@@ -27,12 +27,18 @@ TASK = "task1"
 QUERY_REPEATS = 20
 
 
-def fit_crossfit_head(training, images, scorer, atlas_order):
+def fit_crossfit_policy(training, images, scorer, atlas_order=None):
+    """Fit the pooled head and retain the literal fold-zero uncertainty for inference."""
     noise, splits = fold_indices(len(images), images.device)
     candidates, targets, reports = [], [], {}
+    stock_noise = None
     for fold, (metric, inner) in enumerate(splits):
         print(f"Calibration fold {fold}: fitting {len(inner):,} labeled upstream glyphs", flush=True)
-        graph, exact, _, codepoints, report = calibrated_fold(training, images, metric, noise, inner, scorer)
+        graph, exact, uncertainty, codepoints, report = calibrated_fold(training, images, metric, noise, inner, scorer)
+        if fold == 0:
+            stock_noise = uncertainty
+            if atlas_order is None:
+                atlas_order = codepoints
         if not torch.equal(atlas_order, codepoints):
             raise ValueError("Every independently calibrated fold must share exact public font column order.")
         candidates.append(graph)
@@ -41,6 +47,11 @@ def fit_crossfit_head(training, images, scorer, atlas_order):
     expanded = fit_atlas_metric_ranker(concat_atlas_candidates(candidates), torch.cat(targets), seed=MODEL_SEED,
                                       epochs=RANKER_EPOCHS, batch_rows=RANKER_BATCH,
                                       rows_per_epoch=MATCHED_ROWS_PER_EPOCH)
+    return expanded, reports, stock_noise, atlas_order
+
+
+def fit_crossfit_head(training, images, scorer, atlas_order):
+    expanded, reports, _, _ = fit_crossfit_policy(training, images, scorer, atlas_order)
     return expanded, reports
 
 
