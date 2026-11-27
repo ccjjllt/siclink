@@ -10,8 +10,7 @@ import torch
 from torch.nn import functional as F
 
 from glyph_atlas_prior import fit_atlas_prior
-from glyph_bipartite_encoding import timing_view
-from glyph_data import grouped_blocks, load_catalog, load_images, locate_data, read_trials
+from glyph_data import BIN_MS, load_catalog, load_images, locate_data
 from glyph_kernel_encoding import fit_kernel_glyph_encoder
 from kaggle_atlas_depth_diagnostics import PairedOCF
 from kaggle_diagnostics import official_scorer
@@ -70,8 +69,38 @@ def fit_readout(training, coordinates, rng):
     return Readout(ordinary, center, scale, whitening, latent_center, latent_weights, output_center, banks), diagnostics
 
 
-def predictions(counts, readout, prior, rng):
-    timing = timing_view(counts.unflatten(-1, (-1, 10)))
+def evoked_block(root, catalog, entry, *, expected_groups, expected_repeats, labeled):
+    """Count the exact evoked windows without storing the ten-bin raw tensor or reading query IDs."""
+    if BIN_MS != 25 or catalog["window_ms"] != 250:
+        raise ValueError("These timing features use the original ten 25-ms bins.")
+    samples_per_bin = catalog["sample_rate_hz"] * BIN_MS // 1_000
+    units = entry["n_units"]
+    phase_lookup = np.asarray((0, 0, 1, 1, 2, 2, 2, 3, 3, 3), dtype=np.int8)
+    with np.load(root / entry["path"]) as source:
+        groups = np.diff(source["group_ptr"])
+        trial_sizes = np.diff(source["trial_ptr"])
+        targets = np.repeat(source["target"], groups) if labeled else None
+        trial = np.repeat(np.arange(len(trial_sizes), dtype=np.int32), trial_sizes)
+        phase = phase_lookup[source["spike_samples"] // samples_per_bin]
+        flat = (trial * units + source["unit_index"]) * 4 + phase
+    if len(trial_sizes) != expected_groups * expected_repeats:
+        raise ValueError("The recording does not contain the expected number of measured trials.")
+    hist = np.bincount(flat, minlength=len(trial_sizes) * units * 4).reshape(-1, units, 4)
+    del trial, flat
+    counts = torch.from_numpy(hist[..., 1:]).float()
+    if labeled:
+        if np.bincount(targets, minlength=expected_groups).tolist() != [expected_repeats] * expected_groups:
+            raise ValueError("Every labeled glyph must have four genuine trial repeats.")
+        counts = counts[np.argsort(targets, kind="stable")]
+    elif len(groups) != expected_groups or bool((groups != expected_repeats).any()):
+        raise ValueError("Every anonymous group must have twenty genuine trial repeats.")
+    counts = counts.reshape(expected_groups, expected_repeats, units, 3)
+    totals = counts.sum(-1)
+    timing = torch.cat((totals[..., None], counts), dim=-1).add_(0.375).sqrt_().flatten(-2)
+    return timing, totals
+
+
+def predictions(timing, counts, readout, prior, rng):
     complete = readout.pick(timing.mean(1), prior)
     partitions = []
     for _ in range(SPLITS):
@@ -88,11 +117,9 @@ def predictions(counts, readout, prior, rng):
 
 
 def held_log_likelihood(observed, rates, baseline):
-    reference = baseline.unflatten(-1, (-1, 10))[..., 2:].sum(-1).clamp_min(1e-4)
-    expected = rates.unflatten(-1, (-1, 10))[..., 2:].sum(-1)
-    expected = (0.98 * expected + 0.02 * reference).clamp_min(1e-4)
-    data = observed.unflatten(-1, (-1, 10))[..., 2:].sum(-1)
-    return (data * (expected.log() - reference.log()) - expected + reference).sum(-1)
+    reference = baseline.clamp_min(1e-4)
+    expected = (0.98 * rates + 0.02 * reference).clamp_min(1e-4)
+    return (observed * (expected.log() - reference.log()) - expected + reference).sum(-1)
 
 
 def calculate_reliability(full, partitions, read_rates, baseline, contour):
@@ -144,16 +171,19 @@ def main():
     scored = rng.choice(len(held), size=SCORE_GLYPHS, replace=False).reshape(len(SESSIONS), -1)
     official = {entry["session"]: entry for entry in catalog["blocks"] if entry["split"] == "test"
                 and entry["task"] == "task1" and entry["mouse"] == MOUSE}
-    labeled = grouped_blocks(root, catalog, MOUSE, device, len(images))
-    if tuple(labeled) != SESSIONS or set(official) != set(SESSIONS):
+    train_entries = {entry["session"]: entry for entry in catalog["blocks"] if entry["task"] == "train" and entry["mouse"] == MOUSE}
+    if set(train_entries) != set(SESSIONS) or set(official) != set(SESSIONS):
         raise ValueError("Require the four labeled and four official mice2 Task 1 recordings.")
     report = {"seed": SEED, "mouse": MOUSE, "fit_count": len(fit), "labeled_held_count": len(held),
               "cohort_overlap": overlap, "official_group_count": 0, "official_labels_loaded": False,
               "official_input_diagnostic_only": True, "split_partitions": SPLITS, "recordings": {},
+              "timing_count_layout": "25-ms bins compressed to baseline/early/mid/late, with exact evoked total",
+              "forward_targets": "per-unit measured counts across the full 50–250 ms evoked window",
               "protocol": "Same held-glyph PP ridge and whitened PP readouts in the same atlas. Compare 2/2 disjoint "
                           "halves on independent labeled examples, and 10/10 real halves within each official group. "
                           "An independent image-to-spikes contour kernel estimates held-half spike likelihood of the "
                           "other half's selected candidate. No choices, IDs or labels from formal data are written."}
+    publish(report, OUTPUT, started, "inputs_ready")
     session, metadata = recognizer()
     report["ppocrv6"] = metadata
     publish(report, OUTPUT, started, "assets_ready")
@@ -166,8 +196,12 @@ def main():
     extractors.pop("random_mobilenet")
     coordinates = {**image_coordinates(images[fit], atlas.images, extractors), "pp": pp}
     prior = fit_atlas_prior(atlas, codepoints, images[fit])
-    training = {day: data[fit] for day, data in labeled.items()}
-    contour_model = fit_kernel_glyph_encoder(training, images[fit])
+    labeled = {}
+    for day in SESSIONS:
+        labeled[day] = evoked_block(root, catalog, train_entries[day], expected_groups=len(images), expected_repeats=4, labeled=True)
+        publish(report, OUTPUT, started, f"{day}_labeled_compact")
+    training_rates = {day: totals[fit] for day, (_, totals) in labeled.items()}
+    contour_model = fit_kernel_glyph_encoder(training_rates, images[fit])
     scorer = official_scorer(root)
     report.update(atlas=provenance, candidates=len(codepoints))
     publish(report, OUTPUT, started, "models_ready")
@@ -176,18 +210,16 @@ def main():
     labeled_stats, anonymous_stats, labeled_errors = [], [], []
     pair_count = 0
     for i, day in enumerate(SESSIONS):
-        formal = read_trials(root, catalog, official[day], device, load_labels=False)
-        observed = labeled[day][held]
-        if formal.counts.shape[:2] != (340, 20) or formal.labels is not None or observed.shape[1] != 4:
-            raise ValueError("Expected 340 anonymous twenty-repeat queries and four genuine labeled repeats.")
-        responses = timing_view(training[day].unflatten(-1, (-1, 10)))
-        readout, diagnostic = fit_readout(responses, coordinates, rng)
-        first = predictions(observed, readout, prior, rng)
-        second = predictions(formal.counts, readout, prior, rng)
+        formal_timing, formal_totals = evoked_block(root, catalog, official[day], expected_groups=340,
+                                                  expected_repeats=20, labeled=False)
+        observed_timing, observed_totals = labeled.pop(day)
+        readout, diagnostic = fit_readout(observed_timing[fit], coordinates, rng)
+        first = predictions(observed_timing[held], observed_totals[held], readout, prior, rng)
+        second = predictions(formal_timing, formal_totals, readout, prior, rng)
         all_ids = torch.cat([values[:, 0] for _, partitions in (first, second) for split in partitions
                              for choices, _ in split for values in choices.values()]).unique(sorted=True)
         rates = contour_model.expected_counts(atlas.images[all_ids], day)
-        baseline = training[day].mean((0, 1))
+        baseline = training_rates[day].mean((0, 1))
 
         def read_rates(indices):
             return rates[torch.searchsorted(all_ids, indices)]
@@ -204,7 +236,7 @@ def main():
         labeled_errors.append(difference[score_rows])
         pair_count += len(exact.values)
         report["recordings"][day] = {"fit": diagnostic, "labeled": describe(comparison[0]), "official": describe(comparison[1])}
-        report["official_group_count"] += len(formal.counts)
+        report["official_group_count"] += len(formal_timing)
         publish(report, OUTPUT, started, f"{day}_scored")
     summary = {name: np.concatenate(ocf) for name, ocf in exact_by_arm.items()}
     report["labeled_same_day_four_ocf"] = {name: summarize([values], [summary[RIDGE_PP]]) for name, values in summary.items()}
