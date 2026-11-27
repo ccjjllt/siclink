@@ -39,12 +39,12 @@ OCF_GLYPHS = 96
 OUTPUT = Path("/kaggle/working/task1_microns_transfer.json")
 
 
-def load_released_core():
+def load_released_core(*, work_dir="/kaggle/working"):
     subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--no-deps",
                     f"git+{FNN_SOURCE}.git@{FNN_VERSION}"], check=True)
     from fnn.microns.build import network
 
-    with tempfile.TemporaryDirectory(prefix="microns-core-", dir="/kaggle/working") as directory:
+    with tempfile.TemporaryDirectory(prefix="microns-core-", dir=work_dir) as directory:
         archive = Path(directory) / "published.zip"
         with urlopen(PUBLIC_ARCHIVE, timeout=90) as source, archive.open("wb") as destination:
             shutil.copyfileobj(source, destination, 1024 * 1024)

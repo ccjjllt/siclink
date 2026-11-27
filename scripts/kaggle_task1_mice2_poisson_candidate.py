@@ -1,4 +1,4 @@
-"""Package the verified mice2 Task 1 1.4× Poisson decision over immutable v17."""
+"""Package the verified mice2 Task 1 1.4× Poisson decision over immutable v17b."""
 
 import argparse
 import json
@@ -22,8 +22,8 @@ from kaggle_task3_density_candidate import open_png, stored_predictions, verify_
 from kaggle_v8_metric_validation import NOMINATIONS, SESSIONS, atlas_scores, fit_v8, rendered_bank
 
 
-BASE_SHA = "61dc0a81e8ff1f3f5c323f516818947c24886f7a6708ad71b84b9ee38aa52ec5"
-BASE_SOURCE = "https://www.kaggle.com/code/ccjjllt/siclink-candidate-v17-task3-utility/versions/1"
+BASE_SHA = "469f6d042755a5ed585fe7c58709fc9774136d1a2227ed3632681cbb3bc0cfdf"
+BASE_SOURCE = "https://www.kaggle.com/code/ccjjllt/siclink-candidate-v17b-mice2-utility/versions/1"
 VALIDATIONS = ("https://www.kaggle.com/code/ccjjllt/siclink-task1-mice2-microns-spatial-atlas/versions/1",
                "https://www.kaggle.com/code/ccjjllt/siclink-task1-mice2-poisson-repeat-recheck/versions/1")
 
@@ -51,18 +51,19 @@ def predict(root, catalog, entries, model, ranker, noise):
     return blocks, scope
 
 
-def protected_replacements(blocks, stored, rendered):
+def protected_replacements(blocks, stored, rendered, *, base_policy="v14"):
     updates, changed_ids, summaries = {}, {}, {}
+    reproduced = f"nominal_{base_policy}_recreated_base_pixels"
     for day, (ids, before, after, diagnostics) in blocks.items():
         changed_ids[day] = []
-        counts = {"nominal_v14_recreated_base_pixels": 0, "changed_atlas_choices": 0,
+        counts = {reproduced: 0, "changed_atlas_choices": 0,
                   "suggested_changes_retained_due_to_reproduction_mismatch": 0,
                   "different_atlas_choice_with_identical_pixels": 0}
         for sample, incumbent, proposed in zip(ids, before, after, strict=True):
             with open_png(stored[sample]) as original:
                 reference = np.asarray(original)
                 matched = np.array_equal(reference, rendered[incumbent])
-                counts["nominal_v14_recreated_base_pixels"] += int(matched)
+                counts[reproduced] += int(matched)
                 if incumbent == proposed:
                     continue
                 counts["changed_atlas_choices"] += 1
@@ -75,7 +76,7 @@ def protected_replacements(blocks, stored, rendered):
             updates[sample] = encode_grayscale_png(rendered[proposed])
             changed_ids[day].append(sample)
         summaries[day] = {**counts, "queries": len(ids), "changed_predictions": len(changed_ids[day]),
-                          "unrecreated_base_pixels_retained": len(ids) - counts["nominal_v14_recreated_base_pixels"],
+                          "unrecreated_base_pixels_retained": len(ids) - counts[reproduced],
                           "proposal_diagnostics": diagnostics}
         print(json.dumps({"session": day, **summaries[day]}), flush=True)
     return updates, changed_ids, summaries
@@ -84,7 +85,7 @@ def protected_replacements(blocks, stored, rendered):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-root", type=Path, help="Extracted competition directory containing catalog.json")
-    parser.add_argument("--base", type=Path, help="Exact verified v17 ZIP to patch")
+    parser.add_argument("--base", type=Path, help="Exact verified v17b ZIP to patch")
     parser.add_argument("--output-dir", type=Path, default=Path("/kaggle/working"))
     args = parser.parse_args()
     if not torch.cuda.is_available():
@@ -93,12 +94,12 @@ def main():
         raise RuntimeError("The protected proposal policy must use the nominal v14 anchor.")
     base = args.base.resolve(strict=True) if args.base else mounted_submission(BASE_SHA)
     if sha256(base) != BASE_SHA:
-        raise ValueError("The base ZIP must match the verified immutable v17 SHA-256.")
+        raise ValueError("The base ZIP must match the verified immutable v17b SHA-256.")
     root = args.data_root.resolve(strict=True) if args.data_root else locate_data()
     output = args.output_dir.resolve()
     archive = output / "kaggle_submission.zip"
     if archive.resolve() == base.resolve():
-        raise ValueError("Give the patched ZIP an output directory distinct from the verified v17 base archive.")
+        raise ValueError("Give the patched ZIP an output directory distinct from the verified v17b base archive.")
     # The official scorer package must be extracted alongside the supplied data root.
     scorer = official_scorer(root)
 

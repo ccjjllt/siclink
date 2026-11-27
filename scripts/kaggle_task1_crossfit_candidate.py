@@ -2,13 +2,15 @@
 
 import json
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 import time
 
 import numpy as np
 import torch
 
-from glyph_atlas_metric_ranker import concat_atlas_candidates, fit_atlas_metric_ranker
+from glyph_atlas_metric_ranker import AtlasCandidates, concat_atlas_candidates, fit_atlas_metric_ranker
 from glyph_data import grouped_blocks, load_catalog, load_images, locate_data, read_trials
+from glyph_predictive_likelihood import PredictiveLikelihood
 from kaggle_baseline import TASK_SIZES
 from kaggle_diagnostics import official_scorer
 from kaggle_exact_rerank_validation import split_calibration
@@ -27,20 +29,70 @@ TASK = "task1"
 QUERY_REPEATS = 20
 
 
-def fit_crossfit_policy(training, images, scorer, atlas_order=None):
+def _fold_fields(fields, device):
+    return {name: field.detach().to(device) if isinstance(field, torch.Tensor) else field
+            for name, field in fields.items()}
+
+
+def _save_fold(path, scope, graph, exact, uncertainty, codepoints, report):
+    payload = {"scope": scope, "candidates": _fold_fields(vars(graph), "cpu"), "exact": exact.detach().cpu(),
+               "codepoints": codepoints.detach().cpu(), "report_json": json.dumps(report),
+               "fold_zero_noise": {day: _fold_fields(vars(posterior), "cpu") for day, posterior in uncertainty.items()}}
+    with NamedTemporaryFile(dir=path.parent, prefix=f".{path.stem}-", suffix=".tmp", delete=False) as file:
+        temporary = Path(file.name)
+    try:
+        torch.save(payload, temporary)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _load_fold(path, scope, device, sessions):
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    if payload["scope"] != scope:
+        raise ValueError(f"Calibration snapshot {path} does not match the exact fit scope and fold order.")
+    graph = AtlasCandidates(**payload["candidates"])
+    exact, codepoints, noise = payload["exact"], payload["codepoints"], payload["fold_zero_noise"]
+    expected_days = tuple(sessions) if scope["fold"] == 0 else ()
+    if (exact.shape != graph.valid.shape or len(graph.valid) != len(scope["metric"]) * len(sessions)
+            or codepoints.shape != (graph.atlas_size,) or tuple(noise) != expected_days):
+        raise ValueError(f"Calibration snapshot {path} has incompatible candidates or uncertainty.")
+    uncertainty = {day: PredictiveLikelihood(**_fold_fields(parameters, device))
+                   for day, parameters in noise.items()}
+    return (AtlasCandidates(**_fold_fields(vars(graph), device)), exact.to(device), uncertainty, codepoints,
+            json.loads(payload["report_json"]))
+
+
+def fit_crossfit_policy(training, images, scorer, atlas_order=None, *, cache_dir=None, cache_key=None):
     """Fit the pooled head and retain the literal fold-zero uncertainty for inference."""
+    if cache_dir is not None:
+        if not cache_key:
+            raise ValueError("A calibration cache requires an exact training and source fingerprint.")
+        cache_dir.mkdir(parents=True, exist_ok=True)
     noise, splits = fold_indices(len(images), images.device)
     candidates, targets, reports = [], [], {}
     stock_noise = None
     for fold, (metric, inner) in enumerate(splits):
-        print(f"Calibration fold {fold}: fitting {len(inner):,} labeled upstream glyphs", flush=True)
-        graph, exact, uncertainty, codepoints, report = calibrated_fold(training, images, metric, noise, inner, scorer)
+        checkpoint = cache_dir / f"fold-{fold}.pt" if cache_dir is not None else None
+        restored = checkpoint is not None and checkpoint.is_file()
+        if checkpoint is not None:
+            scope = {"format": 1, "key": cache_key, "fold": fold, "metric": metric.tolist(), "noise": noise.tolist(),
+                     "inner": inner.tolist()}
+        if restored:
+            graph, exact, uncertainty, codepoints, report = _load_fold(checkpoint, scope, images.device, training)
+            print(f"Calibration fold {fold}: restored {checkpoint}", flush=True)
+        else:
+            print(f"Calibration fold {fold}: fitting {len(inner):,} labeled upstream glyphs", flush=True)
+            graph, exact, uncertainty, codepoints, report = calibrated_fold(training, images, metric, noise, inner, scorer)
         if fold == 0:
             stock_noise = uncertainty
             if atlas_order is None:
                 atlas_order = codepoints
         if not torch.equal(atlas_order, codepoints):
             raise ValueError("Every independently calibrated fold must share exact public font column order.")
+        if checkpoint is not None and not restored:
+            _save_fold(checkpoint, scope, graph, exact, uncertainty if fold == 0 else {}, codepoints, report)
+            print(f"Calibration fold {fold}: saved {checkpoint}", flush=True)
         candidates.append(graph)
         targets.append(exact)
         reports[str(fold)] = report
