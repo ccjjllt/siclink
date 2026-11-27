@@ -20,7 +20,7 @@ colab-use ccjjllt0
 colabx new -s gpu1 --gpu T4
 ```
 
-`colabx` 会优先继承已设置的 `HTTP_PROXY` 和 `HTTPS_PROXY`。如果当前 shell 里有旧值，运行前将两者设为 `$COLAB_PROXY`。
+`colabx` 会优先继承已设置的 `HTTP_PROXY` 和 `HTTPS_PROXY`。如果当前 shell 里有旧值，运行前将两者设为 `$COLAB_PROXY`。同时设置了小写的 `http_proxy` 或 `https_proxy` 时，也使用同一地址。
 
 如果从 Drive 读取数据，可以先把 `data/raw/` 中需要的内容放在桌面版 Google Drive 的私人目录里，待同步完成后在 Colab Notebook 挂载。数据目录应当只有获准参与比赛的账号可访问。把实际目录传给脚本，避免依赖本机盘符。[比赛数据规则](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/rules)
 
@@ -43,7 +43,7 @@ from pathlib import Path
 import os
 import subprocess
 
-token_path = Path("/content/.siclink-kaggle-token")
+token_path = Path("/.siclink-kaggle-token")
 try:
     kaggle_env = {**os.environ, "KAGGLE_API_TOKEN": token_path.read_text().strip()}
 finally:

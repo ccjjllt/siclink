@@ -121,6 +121,8 @@ def push(args, kernel):
         }
         if args.kernel_source:
             metadata["kernel_sources"] = args.kernel_source
+        if args.dataset_source:
+            metadata["dataset_sources"] = args.dataset_source
         (stage / "kernel-metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
         command = ["push", "--path", folder]
         if gpu:
@@ -140,6 +142,7 @@ def parse_args():
     uploader.add_argument("entry", type=Path)
     uploader.add_argument("--include", action="append", type=Path, default=[], help="Python source to bundle; repeat as needed")
     uploader.add_argument("--kernel-source", action="append", default=[], help="Kaggle input notebook as owner/slug")
+    uploader.add_argument("--dataset-source", action="append", default=[], help="Kaggle input dataset as owner/slug")
     uploader.add_argument("--source-root", type=Path, default=ROOT, help="root whose import paths are preserved")
     uploader.add_argument("--accelerator", default="NvidiaTeslaT4", help="Kaggle accelerator ID or cpu")
     uploader.add_argument("--internet", action="store_true", help="allow remote downloads of public research assets")
