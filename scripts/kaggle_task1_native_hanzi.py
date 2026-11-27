@@ -133,18 +133,22 @@ def fitted_pca(features, fit_count):
     return coordinates / deviation
 
 
+def fit_response_ridge(observation):
+    center, scale = observation.mean(0), observation.std(0).clamp_min(0.04)
+    design = (observation - center) / scale
+    gram = design.T @ design
+    gram.diagonal().add_(RIDGE * len(observation))
+    ridge_map = torch.cholesky_solve(design.T, torch.linalg.cholesky(gram))
+    return ridge_map, center, scale
+
+
 def response_views(groups, fit, held, rng):
     views = {}
     for day, counts in groups.items():
         if counts.shape[1] != 4:
             raise ValueError(f"Expected four labeled training repeats in {day}.")
         values = timing_view(counts.unflatten(-1, (-1, 10)))
-        observation = values[fit].mean(1)
-        center, scale = observation.mean(0), observation.std(0).clamp_min(0.04)
-        design = (observation - center) / scale
-        gram = design.T @ design
-        gram.diagonal().add_(RIDGE * len(fit))
-        ridge_map = torch.cholesky_solve(design.T, torch.linalg.cholesky(gram))
+        ridge_map, center, scale = fit_response_ridge(values[fit].mean(1))
         random_trial = torch.from_numpy(rng.integers(4, size=len(held)))
         means = (values[held, random_trial], values[held].mean(1))
         views[day] = (ridge_map, *((mean - center) / scale for mean in means))
@@ -176,32 +180,43 @@ def rank_metrics(logits, subset):
     return np.array([float((measured <= depth).float().mean()) for depth in (1, 5, 32)])
 
 
-def report_metrics(arms, sample, confident, endpoint):
+def report_ranks(arms, confident):
     outcome = {}
     all_rows = torch.ones_like(confident)
     for bank, conditions in arms["contour"].items():
         outcome[bank] = {}
         for condition in conditions:
-            evaluations = {}
+            result = {}
             for arm, banks in arms.items():
                 logits = banks[bank][condition].values()
                 all_recall = np.stack([rank_metrics(scores, all_rows) for scores in logits])
                 stable_recall = np.stack([rank_metrics(scores, confident) for scores in logits])
-                output = np.stack([endpoint.evaluate(scores.argmax(1)[sample, None])[:, 0] for scores in logits])
-                evaluations[arm] = (all_recall, stable_recall, output)
-            stock = evaluations["contour"][2]
-            result = {}
-            for arm, (recall, stable, output) in evaluations.items():
-                difference = (output - stock).mean(0)
-                result[arm] = {"recall_top_1_5_32": recall.mean(0).tolist(),
-                               "confident_proxy_recall_top_1_5_32": stable.mean(0).tolist(),
-                               "ocf": float(output.mean()), "paired_delta_vs_contour": float(difference.mean()),
-                               "paired_se_vs_contour": standard_error(difference),
-                               "by_recording_ocf": output.mean(1).tolist()}
-            contrast = (evaluations["frozen_hanzi"][2] - evaluations["random_mobilenet"][2]).mean(0)
-            result["frozen_vs_random_ocf"] = {"paired_delta": float(contrast.mean()), "paired_se": standard_error(contrast)}
+                result[arm] = {"recall_top_1_5_32": all_recall.mean(0).tolist(),
+                               "confident_proxy_recall_top_1_5_32": stable_recall.mean(0).tolist()}
             outcome[bank][condition] = result
     return outcome
+
+
+def add_exact_ocf(outcome, arms, sample, day_allocation, endpoint, condition):
+    values = {}
+    day_order = torch.arange(len(sample))
+    for arm, banks in arms.items():
+        scores = banks["noto_1344"][condition].values()
+        picked = torch.stack([logits.argmax(1)[sample] for logits in scores])
+        selected = picked[day_allocation, day_order] if condition == "single_day_4" else picked[0]
+        values[arm] = endpoint.evaluate(selected[:, None])[:, 0]
+    for arm, output in values.items():
+        difference = output - values["contour"]
+        outcome[arm].update(ocf=float(output.mean()), paired_delta_vs_contour=float(difference.mean()),
+                            paired_se_vs_contour=standard_error(difference), ocf_glyphs=len(output))
+    contrast = values["frozen_hanzi"] - values["random_mobilenet"]
+    outcome["frozen_vs_random_ocf"] = {"paired_delta": float(contrast.mean()), "paired_se": standard_error(contrast)}
+
+
+def publish(result, started, stage):
+    result.update(stage=stage, seconds=time.monotonic() - started)
+    OUTPUT.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(f"{stage} after {result['seconds']:.1f}s", flush=True)
 
 
 @torch.inference_mode()
@@ -232,8 +247,7 @@ def main():
     del groups
     arms = {name: score_banks(fitted_pca(feature, len(fit)), views, len(fit)) for name, feature in visual.items()}
     sample = torch.as_tensor(np.sort(rng.choice(len(held), OCF_COUNT, replace=False)))
-    metric = PairedOCF(official_scorer(root), public_images, (held_images[sample] >= 128).numpy(), device, 12)
-    upper = float(metric.evaluate(sample[:, None]).mean())
+    day_allocation = torch.as_tensor(rng.permutation(np.repeat(np.arange(len(views)), OCF_COUNT // len(views))))
     result = {"seed": SEED, "mouse": "mice1", "device": str(device), "fit_glyphs": len(fit), "held_glyphs": len(held),
               "excluded_previous_scoring_glyphs": previous, "ocf_glyphs": len(sample), "recordings": list(views),
               "ocr": {"checkpoint": OCR_SOURCE, "revision": OCR_REVISION, "sha256": OCR_CHECKSUM,
@@ -241,17 +255,23 @@ def main():
                       "feature_input": "released 56px centered crop on 64px canvas, foreground high, [0,1]"},
               "font": font, "match_similarity": match_similarity, "confident_proxy_glyphs": int(confident.sum()),
               "pca_components": PC_COUNT, "ridge_per_glyph": RIDGE, "feature_seconds": feature_seconds,
-              "mean_ocf_if_matched_noto_selected": upper,
+              "exact_same_day_sample_sizes": dict(zip(views, torch.bincount(day_allocation).tolist(), strict=True)),
               "protocol": "Fit PCA and spike readouts on official fit glyphs only. A known held raster finds a matched "
                           "Noto proxy for the fixed diagnostic bank, and distractors are drawn from fit-image neighbors. "
                           "All arms output the same original Noto bank geometry. A separate closed bank uses exact "
                           "held-image features as diagnostic gallery entries. Known co-indexed trials are cross-day "
                           "high-repeat proxies. External OCR training codepoints can overlap independent SiClink glyphs. "
                           "Evaluation reads only official training spikes and images.",
-              "results": report_metrics(arms, sample, confident, metric), "exact_ocf_pairs": len(metric.values),
-              "seconds": time.monotonic() - started}
-    OUTPUT.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-    print(f"Done in {result['seconds']:.1f}s. {json.dumps(result['results']['noto_1344'])}", flush=True)
+              "results": report_ranks(arms, confident)}
+    publish(result, started, "rank_metrics")
+    metric = PairedOCF(official_scorer(root), public_images, (held_images[sample] >= 128).numpy(), device, 12)
+    hard_results = result["results"]["noto_1344"]
+    for condition in ("coindexed_16", "single_day_4"):
+        add_exact_ocf(hard_results[condition], arms, sample, day_allocation, metric, condition)
+        result["exact_ocf_pairs"] = len(metric.values)
+        publish(result, started, condition)
+    publish(result, started, "complete")
+    print(json.dumps(hard_results), flush=True)
 
 
 if __name__ == "__main__":
