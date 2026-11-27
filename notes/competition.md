@@ -40,6 +40,8 @@
 
 2026-11-26 约 13:33（北京时间）通过 Kaggle API 核对，榜上 80 支队伍，前三名为 Mevlana Yalçın 56.78417、Bowen1314 54.05689、Frozen Kiwi 52.91478。`ccjjllt` 以 25.45723 位列第 39。按成绩排序的公开代码查询仍返回 Moran Zavdi 和 Avik Das 的两个 Notebook，未找到这三个榜单成绩对应的公开实现。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code)
 
+2026-11-27 约 08:55（北京时间）查询的前三名为 Mevlana Yalçın 56.78417、Hanzi Solo 54.35951 和 Bowen1314 54.05689。公开 Code 查询仍只返回 Moran Zavdi 和 Avik Das 的两个 Notebook，未找到前三名对应的公开实现。09:01 核对 `ccjjllt` 的 v20 以 26.53844 排第 42，共 91 支队伍。官方提交接口返回总分。 [公开榜](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/leaderboard) · [Code](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/code) · [Kaggle 提交接口](https://github.com/Kaggle/kaggle-cli/blob/main/docs/competitions.md#kaggle-competitions-submission)
+
 ## v12 的依赖来源
 
 - 放电记录、训练字图及 OCF 代码来自主办方参赛包，受比赛条款约束。v12 在 Kaggle 用官方训练放电和字图拟合。 [数据与参赛包](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/data) · [比赛规则](https://www.kaggle.com/competitions/siclink-mouse-visual-reconstruction-bci-challenge/rules)
